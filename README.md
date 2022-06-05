@@ -1131,7 +1131,7 @@ to navigate to the directory having split sample sets in the number of current s
     system("plink --bfile test_overlap_qc --extract split300_test.snp --make-bed --out selected_fea_score_test")
   ```
                                  
-  * 2.5. Confirm the performance of curated AIM set using AADR set 
+* 2.5. Confirm the performance of curated AIM set using AADR set 
   
   3 AIM sets for training set and test set will be tested:
                                  
@@ -1140,14 +1140,127 @@ to navigate to the directory having split sample sets in the number of current s
   2. AIMs found in the benchamrk of feature selection with null importance (benchmark)
                                  
   3. AIMs in top 300 feature scores from feature selection with null importance (split300)
+                                 
+  Prepare 
+  ```console
+                                 
+  ```
   
     + Use test set samples and selected AIMs to train and predict the training set 
                                  
-  
-  ```r
-    
-  ```
-  
+    Prepare training set and test set + run ADMIXTURE in supervised mode for all AIM sets
+    ```console
+      ## use test set to model training set
+
+      plink --bfile ../reich_here_overlap_qc2 --keep test_sample --make-bed --out test_training
+
+      plink --bfile test_training --bmerge ../genepool_overlap_qc.bed ../genepool_overlap_qc.bim ../genepool_overlap_qc.fam  --make-bed --out test_training_baseline_overlap --allow-no-sex
+
+      cut -f1-2 -d ' ' test_training_baseline_overlap.fam > test_training_baseline_overlap.pop.txt
+
+      printf '%.0s\n' {1..1621} > test_training_baseline_overlap.pop
+
+      cat test_training_baseline_overlap.pop.txt | grep -E 'NorthEastAsian|Mediterranean|SouthAfrican|SouthWestAsian|NativeAmerican|Oceanian|SouthEastAsian|NorthernEuropean|SubsaharanAfrican' | cut -f1 -d' ' >> test_training_baseline_overlap.pop
+
+      ~/admixture32 test_training_baseline_overlap.bed -F 9 -j8
+      cat test_training_baseline_overlap.fam | cut -d ' ' -f1-2 > test_training_out_ind_id
+      sed -i 's/ /\t/g' test_training_out_ind_id
+      sed -i 's/ /\t/g' test_training_baseline_overlap.9.Q
+      paste test_training_out_ind_id test_training_baseline_overlap.9.Q > out_Q_test_training_baseline
+      sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tNorthern European\tOceanian\tSouthern African\tSoutheast Asian\tSouthwest Asian\tSubsaharan African'  out_Q_test_training_baseline
+
+      # benchmark
+      plink --bfile test_training_baseline_overlap --extract sample_feature/benchmark_test.snp  --make-bed --out test_training_selected_bench --noweb
+
+      cut -f1-2 -d ' ' test_training_selected_bench.fam > test_training_selected_bench.pop.txt
+      printf '%.0s\n' {1..1621}  > test_training_selected_bench.pop
+
+      cat test_training_selected_bench.pop.txt | grep -E 'NorthEastAsian|Mediterranean|SouthAfrican|SouthWestAsian|NativeAmerican|Oceanian|SouthEastAsian|NorthernEuropean|SubsaharanAfrican' | cut -f1 -d' ' >> test_training_selected_bench.pop
+
+
+      ~/admixture32 test_training_selected_bench.bed -F 9 -j8
+      cat test_training_selected_bench.fam | cut -d ' ' -f1-2 > test_training_out_ind_id_bench
+      sed -i 's/ /\t/g' test_training_out_ind_id_bench
+      sed -i 's/ /\t/g' test_training_selected_bench.9.Q
+      paste test_training_out_ind_id_bench test_training_selected_bench.9.Q > out_Q_test_training_bench
+      sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tNorthern European\tOceanian\tSouthern African\tSoutheast Asian\tSouthwest Asian\tSubsaharan African'  out_Q_test_training_bench
+
+      # split300
+
+      plink --bfile test_training_baseline_overlap --extract sample_feature/socres_df.split.top300_test.snp  --make-bed --out test_training_selected_split300 --noweb
+
+      cut -f1-2 -d ' ' test_training_selected_split300.fam > test_training_selected_split300.pop.txt
+      printf '%.0s\n' {1..1621}  > test_training_selected_split300.pop
+
+      cat test_training_selected_split300.pop.txt | grep -E 'NorthEastAsian|Mediterranean|SouthAfrican|SouthWestAsian|NativeAmerican|Oceanian|SouthEastAsian|NorthernEuropean|SubsaharanAfrican' | cut -f1 -d' ' >> test_training_selected_split300.pop
+
+      ~/admixture32 test_training_selected_split300.bed -F 9 -j8
+      cat test_training_selected_split300.fam | cut -d ' ' -f1-2 > test_training_out_ind_id_split300
+      sed -i 's/ /\t/g' test_training_out_ind_id_split300
+      sed -i 's/ /\t/g' test_training_selected_split300.9.Q
+      paste test_training_out_ind_id_split300 test_training_selected_split300.9.Q > out_Q_test_training_split300
+      sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tNorthern European\tOceanian\tSouthern African\tSoutheast Asian\tSouthwest Asian\tSubsaharan African'  out_Q_test_training_split300
+
+
+
+
+      plink --bfile ../reich_here_overlap_qc2 --keep sample_feature/reference_sample --make-bed --out test_test
+
+      plink --bfile test_test --bmerge ../genepool_overlap_qc.bed ../genepool_overlap_qc.bim ../genepool_overlap_qc.fam  --make-bed --out test_test_baseline_overlap --allow-no-sex
+
+      cut -f1-2 -d ' ' test_test_baseline_overlap.fam > test_test_baseline_overlap.pop.txt
+
+      printf '%.0s\n' {1..1756} > test_test_baseline_overlap.pop
+
+      cat test_test_baseline_overlap.pop.txt | grep -E 'NorthEastAsian|Mediterranean|SouthAfrican|SouthWestAsian|NativeAmerican|Oceanian|SouthEastAsian|NorthernEuropean|SubsaharanAfrican' | cut -f1 -d' ' >> test_test_baseline_overlap.pop
+
+      ~/admixture32 test_test_baseline_overlap.bed -F 9 -j8
+      cat test_test_baseline_overlap.fam | cut -d ' ' -f1-2 > test_test_out_ind_id
+      sed -i 's/ /\t/g' test_test_out_ind_id
+      sed -i 's/ /\t/g' test_test_baseline_overlap.9.Q
+      paste test_test_out_ind_id test_test_baseline_overlap.9.Q > out_Q_test_test_baseline
+      sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tNorthern European\tOceanian\tSouthern African\tSoutheast Asian\tSouthwest Asian\tSubsaharan African'  out_Q_test_test_baseline
+
+
+      # benchmark
+      plink --bfile test_test_baseline_overlap --extract sample_feature/benchmark_test.snp  --make-bed --out test_test_selected_bench --noweb
+
+      cut -f1-2 -d ' ' test_test_selected_bench.fam > test_test_selected_bench.pop.txt
+      printf '%.0s\n' {1..1756}  > test_test_selected_bench.pop
+
+
+      cat test_test_selected_bench.pop.txt | grep -E 'NorthEastAsian|Mediterranean|SouthAfrican|SouthWestAsian|NativeAmerican|Oceanian|SouthEastAsian|NorthernEuropean|SubsaharanAfrican' | cut -f1 -d' ' >> test_test_selected_bench.pop
+
+      ~/admixture32 test_test_selected_bench.bed -F 9 -j8
+      cat test_test_selected_bench.fam | cut -d ' ' -f1-2 > test_test_out_ind_id_bench
+      sed -i 's/ /\t/g' test_test_out_ind_id_bench
+      sed -i 's/ /\t/g' test_test_selected_bench.9.Q
+      paste test_test_out_ind_id_bench test_test_selected_bench.9.Q > out_Q_test_test_bench
+      sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tNorthern European\tOceanian\tSouthern African\tSoutheast Asian\tSouthwest Asian\tSubsaharan African'  out_Q_test_test_bench
+
+      # split300
+
+      plink --bfile test_test_baseline_overlap --extract sample_feature/socres_df.split.top300_test.snp  --make-bed --out test_test_selected_split300 --noweb
+
+      cut -f1-2 -d ' ' test_test_selected_split300.fam > test_test_selected_split300.pop.txt
+      printf '%.0s\n' {1..1756}  > test_test_selected_split300.pop
+
+      cat test_test_selected_split300.pop.txt | grep -E 'NorthEastAsian|Mediterranean|SouthAfrican|SouthWestAsian|NativeAmerican|Oceanian|SouthEastAsian|NorthernEuropean|SubsaharanAfrican' | cut -f1 -d' ' >> test_test_selected_split300.pop
+
+      ~/admixture32 test_test_selected_split300.bed -F 9 -j8
+      cat test_test_selected_split300.fam | cut -d ' ' -f1-2 > test_test_out_ind_id_split300
+      sed -i 's/ /\t/g' test_test_out_ind_id_split300
+      sed -i 's/ /\t/g' test_test_selected_split300.9.Q
+      paste test_test_out_ind_id_split300 test_test_selected_split300.9.Q > out_Q_test_test_split300
+      sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tNorthern European\tOceanian\tSouthern African\tSoutheast Asian\tSouthwest Asian\tSubsaharan African'  out_Q_test_test_split300
+      
+      Rscript --vanilla run_rf_train_test.R test
+    ```
+    where *run_rf_train_test.R*:
+    ```r
+      
+    ```
+      
   
                                  
                            
