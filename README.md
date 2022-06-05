@@ -1,8 +1,8 @@
 # master degree project: a forensic grographic corrdinate prediction pipeline
-## course: degree project
-## credit: 45
-## student: Yuexin Yu
-## Supervisor: Eran Elhaik
+#### course: degree project
+#### credit: 45
+#### student: Yuexin Yu
+#### Supervisor: Eran Elhaik
 
 This is the README file containing the workflow to construct this forensic geopragic cooridnate prediction pipeline.
 
@@ -17,17 +17,17 @@ The required input are available in *Data* directory.
   
   
 > 1. AADR set data preparation
-  Codes here are perfomed in Bash command
+  Codes here are perfomed in Bash command. Since some of file sizes here are over the size limit on github, only the result files with the prefix *reich_here_overlap* are provided
   ```console
-  # Get overlaps between genepool dataset and reich dataset
+  # Get overlaps between ancestrial population set and AADR set
   plink --bfile ../Genographic/num_Admixture_reference_pops --extract reich_here.bim --make-bed --out genepool_overlap_SNP --noweb
   
-  # keep only overlapped SNPs in Reich’s dataset
+  # keep only overlapped SNPs in AADR set
   plink --bfile reich_here --extract ../Genographic/num_Admixture_reference_pops.bim --make-bed --out reich_here_overlap --noweb
   ```
   
 > 2. Randomly split AADR samples into 2, do 100 times
-  Codes here are performed in R 4.1.2
+  Codes here are performed in R 4.1.2. 
   ```r
   # load meta
 meta <- read.csv('meta_table') #nrow(meta)=14008
@@ -79,6 +79,8 @@ for(j in 1:100){
 }
 
   ```
+  
+  > For each 
 
 
 
