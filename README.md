@@ -346,6 +346,68 @@ add_meta_reich <- function(qfile_nogp, meta){
 }
 
 
+null_importance_select <-function(x, features, seed=123, shuffle=F,cores = 16) {
+  # Return a feature importance table for all feature by fit model to latitude and longitude respectively, and sum the feature importance of both latitude and longitude as one feature's feature importance.
+  
+  # @x: A data frame containing columns used for model training, and the target to fit
+  # @features: A list of feature names in x, which is used in model training
+  # @shuffle: A boolean. If FALSE, the targets map to corresponding sample, which is the default; otherwise, the targets will be randomly shift to other samples
+  # @cores: An integer. The number of cores to run this function
+  
+  
+  y.lat <- x$latitude
+  y.long <-x$longitude
+  
+  # Shuffle target if required
+  if(isTRUE(shuffle)){
+    
+    new_order_x <- x[sample(nrow(x), size = nrow(x)),]
+    y.lat <- new_order_x$latitude
+    y.long <- new_order_x$longitude
+  }
+  
+  dtrain.lat <- lgb.Dataset(data = as.matrix(x[,-c(ncol(x)-1,ncol(x))]), label = y.lat, free_raw_data=F)
+  
+  lgb_params <- list(objective = "regression",
+                     boosting = 'rf',
+                     subsample = 0.623,
+                     colsample_bytree = 0.7,
+                     num_leaves = 137,
+                     max_depth = 8,
+                     seed = seed,
+                     bagging_freq = 1,
+                     n_jobs = cores)
+  
+  # fit the model for latitude
+  clf.lat <- lgb.train(params=lgb_params, data=dtrain.lat, nrounds=200, init_model=NULL)
+  
+  
+  
+  dtrain.long <- lgb.Dataset(data = as.matrix(x[,-c(ncol(x)-1,ncol(x))]), label = y.long, free_raw_data=F)
+  
+  # fit the model for longitude
+  clf.long <- lgb.train(params=lgb_params, data=dtrain.long, nrounds=200)
+  
+  # Get feature importances, sum the feature importance in latitude and longitude as a feature's feature importance
+  ftr_importance.long <- lgb.importance(clf.long, percentage = F)[,c('Feature','Gain', 'Frequency')]
+  ftr_importance.lat <- lgb.importance(clf.lat, percentage = F)[,c('Feature','Gain', 'Frequency')]
+  for(i in 1:nrow(ftr_importance.long)){
+    current_fea <- ftr_importance.long$Feature[i]
+    if(current_fea %in% ftr_importance.lat$Feature){ # lat + long
+      ftr_importance.lat$Gain[which(ftr_importance.lat$Feature == current_fea)] <- sum(c(ftr_importance.lat$Gain[which(ftr_importance.lat$Feature == current_fea)], ftr_importance.long$Gain[i]))
+      ftr_importance.lat$Frequency[which(ftr_importance.lat$Feature == current_fea)] <- sum(c(ftr_importance.lat$Frequency[which(ftr_importance.lat$Feature == current_fea)], ftr_importance.long$Frequency[i]))
+    }else{
+      ftr_importance.lat <- rbind(ftr_importance.lat, ftr_importance.long[i,])
+    }
+  }
+  imp_df <- ftr_importance.lat
+  colnames(imp_df) <- c('feature', 'importance_gain', 'importance_split')
+  
+  return(imp_df)
+}
+
+
+
 
 
 ```
@@ -456,7 +518,7 @@ to navigate to the directory having split sample sets in the number of current s
   
   Codes here are performed in R. Both [PLINK 1.07](https://zzz.bwh.harvard.edu/plink/download.shtml) and PLINK 1.9 are required.
   ```r
-    system('sh baseline_preparation')
+    system('sh ../baseline_preparation')
   ```
   
   where *baseline_preparation*:
@@ -510,8 +572,7 @@ to navigate to the directory having split sample sets in the number of current s
 
     # Add meta information
     meta <- read.csv('../meta_table') 
-    source('../add_meta.R')
-
+  
     qfile_nogp <- qfile[-which(qfile$Population %in% c('NorthEastAsian', 'Mediterranean',
                                                    'SouthAfrican', 'SouthWestAsian',
                                                    'NativeAmerican', 'Oceanian',
@@ -571,7 +632,7 @@ to navigate to the directory having split sample sets in the number of current s
                                                                       'SouthAfrican', 'SouthWestAsian',
                                                                       'NativeAmerican', 'Oceanian',
                                                                       'SouthEastAsian', 'NorthernEuropean',
-                                                                      'SubsaharanAfrican')), ] #nrow(metasub_data)=1760
+                                                                      'SubsaharanAfrican')), ]
   
   print(paste0('nrow of metasub_data after removing gene pools: ',nrow(metasub_data)))
   
@@ -583,8 +644,7 @@ to navigate to the directory having split sample sets in the number of current s
   str(metasub_data)
   
   # Add meta information
-  meta <- read.csv('../meta_table') #nrow(meta)=14008
-  source('../add_meta.R')
+  meta <- read.csv('../meta_table') 
   metasub_data_meta <- add_meta_reich(metasub_data, meta)
   
   if(sum(is.na(metasub_data_meta$longitude)) > 0){
@@ -602,7 +662,170 @@ to navigate to the directory having split sample sets in the number of current s
   }
 
   ```
+  
+  feature selection with null importance
+  ```r
+  ##### Data preparation #####
+  load('metasub_data_maf_ref.rdata')
+
+  trial_dt <- metasub_data_meta
+  trial_dt <- trial_dt[,c(2:(ncol(trial_dt)-4),
+                          grep('latitude', colnames(trial_dt)),
+                          grep('longitude', colnames(trial_dt)))] # only remains MAF columns, latitude column, and longitude column 
+
+  x <- trial_dt
+  features <- colnames(trial_dt)[c(1:(ncol(trial_dt)-2))]
+  if(length(features) + 5 != ncol(metasub_data_meta)){ # 5 columns : Populations, GRC, country, latitude, longitude
+    stop('Number of length +5 not equal to MAF table') # if the equation does not meet, more/less features were extracted
+  }
+  
+  
+  ##### benchmarking generation #####
+  benchmark <- null_importance_select(x=x, features= features,
+                                      shuffle=F, seed=123)
+  print('benchmark:')
+  head(benchmark)
+  
+  save(benchmark, file = 'benchmark.rdata')
+  
+  ##### null importance #####
+  null_imp_df <- data.frame()
+  nb_runs <- 80 # shuffle 80 times
+  start_time <- Sys.time()
+  dsp <- c() 
+  for(i in 1:nb_runs){
+    # Get current run importances
+    imp_df <- null_importance_select(x=x, features= features,
+                                     shuffle=T, seed=123)
+    imp_df$run <- i
+    # Concat the latest importances with the old ones
+    if(nrow(null_imp_df)==0){
+      null_imp_df <- imp_df
+    }else{
+      null_imp_df<- rbind(null_imp_df, imp_df)
+    }
+    # Display current run and time used
+    spent = Sys.time() - start_time
+    dsp <- c(dsp,paste0('Done with    ', i,' of ',nb_runs, '    (spent ', spent,')' )) 
+    print(dsp)
+    
+  }
+  end_time <- Sys.time()
+  time_for_testPreds_ind <- end_time - start_time
+  print(time_for_testPreds_ind)
+  
+  print('null_imp_df:')
+  head(null_imp_df)
+  
+  save(null_imp_df, file = 'null_imp_df.rdata')
+
+  ##### sync features in null importance and benchmark #####
+  load('null_imp_df.rdata')
+  load('benchmark.rdata')
+  null_imp_df.cp <- null_imp_df
+  benchmark.cp <- benchmark
+  null_imp_fea <- unique(null_imp_df.cp$feature)
+  
+  # if features in benchmark does not present in features in data frame having 80 shuffle feature importance results, add this benchmark feature.
+  for(j in 1:nrow(benchmark.cp)){ 
+    current_fea_benchmark <- benchmark.cp$feature[j]
+    if(!current_fea_benchmark %in% null_imp_df$feature){
+      null_imp_df <- rbind(as.data.frame(null_imp_df),
+                           c(current_fea_benchmark, 0, 0, 0))
+    }
+  }
+  if(sum(!benchmark.cp$feature %in% null_imp_fea) + length(null_imp_fea) != length(unique(null_imp_df$feature))){
+    print(paste0('num of features in benchmark not in null_imp + num of features in null_imp: ',sum(!benchmark.cp$feature %in% null_imp_fea) + length(null_imp_fea)))
+    print(paste0('num of features in null_imp after adding', length(unique(null_imp_df$feature))))
+    stop('check the equivalence between benchmark$feature and null_imp$feature')
+    
+  }else{
+    # if features in data frame having 80 shuffle feature importance results does not present in features in benchmark, add this feature
+    for(i in 1:length(null_imp_fea)){
+      current_fea <- null_imp_fea[i]
+      if(!current_fea %in% benchmark$feature){
+        benchmark <- rbind(as.data.frame(benchmark), c(current_fea, 0, 0))
+      }
+    }
+    
+    if(  nrow(benchmark) == length(unique(null_imp_df$feature)) ){
+      benchmark$importance_gain <- as.numeric(benchmark$importance_gain)
+      benchmark$importance_split <- as.numeric(benchmark$importance_split)
+      null_imp_df$importance_gain <- as.numeric(null_imp_df$importance_gain)
+      null_imp_df$importance_split <- as.numeric(null_imp_df$importance_split)
+      null_imp_df$run <- as.numeric(null_imp_df$run)
+      
+      save(benchmark, file = 'benchmark_full.rdata')
+      save(null_imp_df, file = 'null_imp_df_full.rdata')
+      
+    }else{
+      print('num of features in benchmark: ', nrow(benchmark))
+      print('num of features in null_imp: ', length(unique(null_imp_df$feature)))
+      stop('num of row in benchmark does not equal to features in null_imp_df')
+    }
+    
+  }
+  
+  
+    ##### calculate the feature scoring for each feature in benchmark #####
+  load('benchmark_full.rdata')
+  load('null_imp_df_full.rdata')
+  
+  feature_scores <- data.frame(feature=NA, split_score=NA, gain_score=NA)
+  for (f in unique(benchmark$feature)){
+    f_null_imps_gain <- null_imp_df$importance_gain[null_imp_df$feature == f]
+    f_act_imps_gain <- mean(benchmark$importance_gain[benchmark$feature == f])
+    gain_score <- log(1e-10 + f_act_imps_gain / (1 + quantile(f_null_imps_gain, c(.75))[[1]]))  # Avoid divide by zero
+    f_null_imps_split <- null_imp_df$importance_split[null_imp_df$feature == f]
+    f_act_imps_split <- mean(benchmark$importance_split[benchmark$feature == f])
+    split_score <- log(1e-10 + f_act_imps_split / (1 +  quantile(f_null_imps_split, c(.75))[[1]]))  # Avoid divide by zero
+    feature_scores<- rbind(feature_scores,
+                           c(f, split_score, gain_score))
+    
+  }
+  
+  scores_df <- feature_scores[-1,]
+  scores_df$split_score <- as.numeric(scores_df$split_score)
+  scores_df$gain_score <- as.numeric(scores_df$gain_score)
+  
+  print('75 percentile scores_df:')
+  str(scores_df)
+  
+  save(scores_df, file = 'scores_df_75.rdata')
+  
+  #### select the features in top 300 feature score ####
+    filter_selected_fea <- scores_df$feature[which(scores_df$gain_score>0 & scores_df$split_score>0)]
+
+    filter_selected_fea.order <- filter_selected_fea[order(filter_selected_fea, decreasing = T),]
+    write.table(filter_selected_fea.order[c(1:300)], file = 'split300.snp', quote = F, row.names = F, col.names = F)
+
+  ```
+                                 
+  + 2.2.5. Extract selected SNPs in training set + Run ADMIXTURE in supervised mode for training set after feature selection
+  
+  ```r
+     system("sh ../aft_fea_sel_command")
+     system("rm selected_fea_score*")
+  ```
+                 
+  where *aft_fea_sel_command*:
+  ```bash session
+     cat selected_fea_score.pop.txt | grep -E 'NorthEastAsian|Mediterranean|SouthAfrican|SouthWestAsian|NativeAmerican|Oceanian|SouthEastAsian|NorthernEuropean|SubsaharanAfrican' | cut -f1 -d' ' >> selected_fea_score.pop
+
+      # Run ADMIXTURE in supervised mode
+      ~/admixture32 selected_fea_score.bed -F 9 -j8
+
+      # Add header to Q file generated from ADMIXTURE
+      cat selected_fea_score.fam | cut -d ' ' -f1-2 > out_ind_id_selected_fea_score
+      sed -i 's/ /\t/g' out_ind_id_selected_fea_score
+      sed -i 's/ /\t/g' selected_fea_score.9.Q
+      paste out_ind_id_selected_fea_score selected_fea_score.9.Q > out_Q_values_ref_selected_fea_score_$2
+      sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tNorthern European\tOceanian\tSouthern African\tSoutheast Asian\tSouthwest Asian\tSubsaharan African' out_Q_values_ref_split300
+  ```
+                                 
+                           
  
+  
                 
 
 
