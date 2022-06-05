@@ -116,52 +116,52 @@ Note: Only the final result files (in 2..) is provided in *Data* directory
     (Note that ADMIXTURE is required, and is prepared in main page named as *admixture32*)
     ```console
     # since the coding of base is different for AADR set and ancestral population set, convert the base in AADR set
-~/bin/plink-1.07-x86_64/plink --bfile reference_reich --allele1234 --make-bed --out reference_reich_qc --noweb
+    ~/bin/plink-1.07-x86_64/plink --bfile reference_reich --allele1234 --make-bed --out reference_reich_qc --noweb
 
-# try to merge training set with ancestral population set, will get an error due to different allelic location in 2 sets, will automatically generate a .missno file
-plink --bfile reference_reich_qc --bmerge ../../genepool_overlap.bed ../../genepool_overlap.bim ../../genepool_overlap.fam  --make-bed --out baseline_overlap --noweb --allow-no-sex
+    # try to merge training set with ancestral population set, will get an error due to different allelic location in 2 sets, will automatically generate a .missno file
+    plink --bfile reference_reich_qc --bmerge ../../genepool_overlap.bed ../../genepool_overlap.bim ../../genepool_overlap.fam  --make-bed --out baseline_overlap --noweb --allow-no-sex
 
-# remove SNPs in different alleleic location
-plink --bfile ../../genepool_overlap --exclude genepool_overlap_missnp --make-bed --out genepool_overlap_qcplink --bfile reference_reich_qc --exclude reference_reich_qc_missnp --make-bed --out reich_here_qc2
+    # remove SNPs in different alleleic location
+    plink --bfile ../../genepool_overlap --exclude genepool_overlap_missnp --make-bed --out genepool_overlap_qcplink --bfile reference_reich_qc --exclude reference_reich_qc_missnp --make-bed --out reich_here_qc2
 
-### To avoid error in ADMIXTURE due to some of samples having all SNPs missing, do quality control for the set
-# Calculate missing rate 
-plink --bfile baseline_overlap --missing --out baseline_overlap --noweb
+    ### To avoid error in ADMIXTURE due to some of samples having all SNPs missing, do quality control for the set
+    # Calculate missing rate 
+    plink --bfile baseline_overlap --missing --out baseline_overlap --noweb
 
-# Get the number of SNPs in baseline_overlap
-wc -l baseline_overlap.bim # to get the number of SNPs in baseline_overlap
+    # Get the number of SNPs in baseline_overlap
+    wc -l baseline_overlap.bim # to get the number of SNPs in baseline_overlap
 
-# Get samples having all SNPs missing
-cat baseline_overlap.imiss  | awk '{if($4==109627) print $2}' >  baseline_overlap_missing_all_SNPs 
+    # Get samples having all SNPs missing
+    cat baseline_overlap.imiss  | awk '{if($4==109627) print $2}' >  baseline_overlap_missing_all_SNPs 
 
-# Remove collected samples
-cat baseline_overlap.fam | grep -wEf baseline_overlap_missing_all_SNPs > baseline_overlap_removeIndividual.txt  
-plink --bfile baseline_overlap --remove baseline_overlap_removeIndividual.txt --noweb --allow-no-sex --make-bed --out baseline_overlap_qc
+    # Remove collected samples
+    cat baseline_overlap.fam | grep -wEf baseline_overlap_missing_all_SNPs > baseline_overlap_removeIndividual.txt  
+    plink --bfile baseline_overlap --remove baseline_overlap_removeIndividual.txt --noweb --allow-no-sex --make-bed --out baseline_overlap_qc
 
-# Generate population  file for ADMIXTURE in supervised mode
-cut -f1-2 -d ' ' baseline_overlap_qc.fam > baseline_overlap_qc.pop.txt
-printf '%.0s\n' {1..1756}  > baseline_overlap_qc.pop
-cat baseline_overlap_qc.pop.txt | grep -E 'NorthEastAsian|Mediterranean|SouthAfrican|SouthWestAsian|NativeAmerican|Oceanian|SouthEastAsian|NorthernEuropean|SubsaharanAfrican' | cut -f1 -d' ' >> baseline_overlap_qc.pop
+    # Generate population  file for ADMIXTURE in supervised mode
+    cut -f1-2 -d ' ' baseline_overlap_qc.fam > baseline_overlap_qc.pop.txt
+    printf '%.0s\n' {1..1756}  > baseline_overlap_qc.pop
+    cat baseline_overlap_qc.pop.txt | grep -E 'NorthEastAsian|Mediterranean|SouthAfrican|SouthWestAsian|NativeAmerican|Oceanian|SouthEastAsian|NorthernEuropean|SubsaharanAfrican' | cut -f1 -d' ' >> baseline_overlap_qc.pop
   
-# Generate population  file for ADMIXTURE in supervised mode
-cut -f1-2 -d ' ' baseline_overlap_qc.fam > baseline_overlap_qc.pop.txt
-printf '%.0s\n' {1..1756}  > baseline_overlap_qc.pop
-cat baseline_overlap_qc.pop.txt | grep -E 'NorthEastAsian|Mediterranean|SouthAfrican|SouthWestAsian|NativeAmerican|Oceanian|SouthEastAsian|NorthernEuropean|SubsaharanAfrican' | cut -f1 -d' ' >> baseline_overlap_qc.pop
+    # Generate population  file for ADMIXTURE in supervised mode
+    cut -f1-2 -d ' ' baseline_overlap_qc.fam > baseline_overlap_qc.pop.txt
+    printf '%.0s\n' {1..1756}  > baseline_overlap_qc.pop
+    cat baseline_overlap_qc.pop.txt | grep -E 'NorthEastAsian|Mediterranean|SouthAfrican|SouthWestAsian|NativeAmerican|Oceanian|SouthEastAsian|NorthernEuropean|SubsaharanAfrican' | cut -f1 -d' ' >> baseline_overlap_qc.pop
 
-# Run ADMIXTURE in supervised mode
-../admixture32 baseline_overlap_qc.bed -F 9 -j8
+    # Run ADMIXTURE in supervised mode
+    ../admixture32 baseline_overlap_qc.bed -F 9 -j8
 
-# Add header to Q file generated from ADMIXTURE
-cat baseline_overlap_qc.fam | cut -d ' ' -f1-2 > training_out_ind_id
-sed -i 's/ /\t/g' training_out_ind_id
-sed -i 's/ /\t/g' baseline_overlap.9.Q
-paste training_out_ind_id baseline_overlap.9.Q > out_Q_training_baseline
-sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tNorthern European\tOceanian\tSouthern African\tSoutheast Asian\tSouthwest Asian\tSubsaharan African'  out_Q_training_baseline  
+    # Add header to Q file generated from ADMIXTURE
+    cat baseline_overlap_qc.fam | cut -d ' ' -f1-2 > training_out_ind_id
+    sed -i 's/ /\t/g' training_out_ind_id
+    sed -i 's/ /\t/g' baseline_overlap.9.Q
+    paste training_out_ind_id baseline_overlap.9.Q > out_Q_training_baseline
+    sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tNorthern European\tOceanian\tSouthern African\tSoutheast Asian\tSouthwest Asian\tSubsaharan African'  out_Q_training_baseline  
     ```
   
-  + 2.2.3. Model training for training set
-  ```r
+    + 2.2.3. Model training for training set
+    ```r
   
-  ```
+    ```
 
 
