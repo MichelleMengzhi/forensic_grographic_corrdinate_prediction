@@ -217,6 +217,135 @@ rf_model_training <- function(qfile_nogp_popFilter, tag, extraColumn=''){
 }
 
 
+maf_tbl_generation <- function(marker_frq, marker_ped,
+                               rdata_output_path){
+  # Return a table having sample in row, SNP in column. Each cell is the minor allele frequency of the SNP in current column for the sample in current row.
+  
+  # @marker_frq: The data frame read from .frq file
+  # @marker_ped: The data frame read from .ped file
+  # @rdata_output_path: A strin gof file path to save the MAF data frame in rdata
+  
+  marker_frq <- marker_frq[-1,]
+  minor_allele.df <- data.frame(SNP = marker_frq$V2, MA = marker_frq$V3)
+  
+  marker_ped.allele <-  marker_ped[,c(1,7:ncol(marker_ped))] # row: individual column: genotype (biallelic)
+  
+  print('Start MAF')
+  
+  # Minor allele frequencies calculation
+  start_time <- Sys.time()
+  pop <- unique(marker_ped.allele$V1)
+  if(length(pop) > 1){
+    marker_freq <- data.frame(population = pop) # note that iteration of marker_ped.allele$V1 = marker_freq$individual
+    for(i in 1:nrow(minor_allele.df)){ # i is index of marker
+      if(i %% 10000 == 0){ # easy to track
+        message(paste('Currently in i=', i))
+      }
+      freqs <- c()
+      minor_allele <- minor_allele.df[i,2]
+      for(j in pop){ #j is individual
+        pop_ave <- mean(stringr::str_count(marker_ped.allele[which(marker_ped.allele$V1 %in% j),1+i],
+                                           pattern = as.character(minor_allele))
+                        * 0.5 ) # get the average of minor allele frequency of one population for current marker
+        freqs <- c(freqs, pop_ave)
+      }
+      marker_freq <- cbind(marker_freq, freqs) # bind the minor allele frequencies for all individual in this marker to the result data frame
+    }
+  }else{# length(pop) = 1
+    marker_freq <- data.frame(population = marker_ped.allele$V1) # note that iteration of marker_ped.allele$V1 = marker_freq$individual
+    for(i in 1:nrow(minor_allele.df)){ # i is index of marker
+      if(i %% 10000 == 0){ # easy to track
+        message(paste('Currently in i=', i))
+      }
+      freqs <- c()
+      minor_allele <- minor_allele.df[i,2]
+      for(j in 1:nrow(marker_ped.allele)){ #j is individual
+        # print(paste('j: ', j))
+        pop_ave <- mean(stringr::str_count(marker_ped.allele[j,1+i],
+                                           pattern = as.character(minor_allele))
+                        * 0.5 ) # get the average of minor allele frequency of one population for current marker
+        freqs <- c(freqs, pop_ave)
+        
+      }
+      marker_freq <- cbind(marker_freq, freqs) # bind the minor allele frequencies for current individual in this marker to the result data frame
+      
+    }
+  }
+  
+  colnames(marker_freq) <- c('Populations', minor_allele.df$SNP) # SNP name as column name
+  
+  end_time <- Sys.time()
+  time_for_marker_freq <- end_time - start_time
+  print(time_for_marker_freq)
+  
+  # Save MAF table
+  metasub_data<- marker_freq
+  save(metasub_data, file = rdata_output_path)
+  return(metasub_data)
+}
+
+
+add_meta_ref <- function(metasub_data, meta){
+  # Return metasub_data with corresponding country, latitude, longitude added for all samples
+  # This function is only used for output_645 set
+
+  # @metasub_data: A data frame having population and GRC information for all samples from output_645 set
+  # @meta: A data frame having meta data for output_645 set
+  
+  # Remove meta data not having enough information
+  meta_latlong <- meta[which(sapply(X = meta$inCountry, FUN = isTRUE)),]
+  
+  # Remove samples having population name that not in the meta data
+  metasub_data <- metasub_data[which(metasub_data$Populations %in% meta_latlong$nameArgument),]
+  meta_latlong$country <- make.names(meta_latlong$country)
+  
+  # Add country, latitude, longitude to the corresponding population
+  metasub_data$country <- NA
+  metasub_data$latitude <- NA
+  metasub_data$longitude <- NA
+  for(i in 1:nrow(metasub_data)){
+    the_population <- metasub_data$Populations[i]
+    metasub_data$country[i] <- meta_latlong$country[which(meta_latlong$nameArgument == the_population)]
+    metasub_data$latitude[i] <- meta_latlong$latitidue[which(meta_latlong$nameArgument == the_population)]
+    metasub_data$longitude[i] <- meta_latlong$longitude[which(meta_latlong$nameArgument == the_population)]
+  }
+  
+  return(metasub_data)
+}
+
+
+add_meta_reich <- function(qfile_nogp, meta){
+  # Return qfile_nogp with meta data (country, latitude, longitude) added, and population is also changed to corresponding version ID in AADR set
+  # This function is only used for AADR set
+  
+  # @qfile_nogp: A data frame having population and GRC information for all samples from AADR set
+  # @meta: A data frame having meta data for AADR set
+  
+  # filter out meta data not in given data frame, and the samples from the given data frame that not in meta data
+  meta_pop <- meta[which(meta$Version.ID %in% qfile_nogp$GRC),]
+  message(nrow(meta_pop))
+  qfile_nogp_popFilter <- qfile_nogp[which(qfile_nogp$GRC %in% meta_pop$Version.ID),]
+  message(nrow(qfile_nogp_popFilter)) # the number of rows in the given data frame and meta data should be the same after filtration
+  
+  meta_pop$Country <- make.names(meta_pop$Country)
+  meta_pop$Version.ID <- as.character(meta_pop$Version.ID)
+  
+  # Add country, latitude, longitude to the corresponding population
+  qfile_nogp_popFilter$country <- NA
+  qfile_nogp_popFilter$latitude <- NA
+  qfile_nogp_popFilter$longitude <- NA
+  for(i in 1:nrow(qfile_nogp_popFilter)){
+    versionID <- qfile_nogp_popFilter$GRC[i]
+    qfile_nogp_popFilter$Populations[i] <- as.character(meta_pop$Group_Label[which(meta_pop$Version.ID == versionID)])
+    qfile_nogp_popFilter$country[i] <- as.character(meta_pop$Country[which(meta_pop$Version.ID == versionID)])
+    qfile_nogp_popFilter$latitude[i] <- as.numeric(as.character(meta_pop$Lat.[which(meta_pop$Version.ID == versionID)]))
+    qfile_nogp_popFilter$longitude[i] <- as.numeric(as.character(meta_pop$Long.[which(meta_pop$Version.ID == versionID)]))
+  }
+  
+  return(qfile_nogp_popFilter)
+}
+
+
 
 
 ```
@@ -356,11 +485,6 @@ to navigate to the directory having split sample sets in the number of current s
     # Remove collected samples
     cat baseline_overlap.fam | grep -wEf baseline_overlap_missing_all_SNPs > baseline_overlap_removeIndividual.txt  
     plink --bfile baseline_overlap --remove baseline_overlap_removeIndividual.txt --noweb --allow-no-sex --make-bed --out baseline_overlap_qc
-
-    # Generate population  file for ADMIXTURE in supervised mode
-    cut -f1-2 -d ' ' baseline_overlap_qc.fam > baseline_overlap_qc.pop.txt
-    printf '%.0s\n' {1..1756}  > baseline_overlap_qc.pop
-    cat baseline_overlap_qc.pop.txt | grep -E 'NorthEastAsian|Mediterranean|SouthAfrican|SouthWestAsian|NativeAmerican|Oceanian|SouthEastAsian|NorthernEuropean|SubsaharanAfrican' | cut -f1 -d' ' >> baseline_overlap_qc.pop
   
     # Generate population  file for ADMIXTURE in supervised mode
     cut -f1-2 -d ' ' baseline_overlap_qc.fam > baseline_overlap_qc.pop.txt
@@ -426,6 +550,59 @@ to navigate to the directory having split sample sets in the number of current s
     # system('rm CONVERTReference.nosex')
 
   ```
+                              
+  Construct MAF table
+  ```r
+    # extracted markers from reference
+    marker_frq <- read.table('reference.frq')
+    marker_ped <- read.table('CONVERTReference.ped', sep = '\t')
+    
+    metasub_data <- maf_tbl_generation(marker_frq, marker_ped,
+                                       'MAF_reference.rdata')
+    system('rm CONVERTReference.ped')
+
+  ```
+  
+  Add meta data to MAF table 
+  ```r
+  load('MAF_reference.rdata')
+  reference_fam <- read.table('reference_sample', sep='\t')[-1,]
+  metasub_data <- metasub_data[-which(metasub_data$Populations %in% c('NorthEastAsian', 'Mediterranean',
+                                                                      'SouthAfrican', 'SouthWestAsian',
+                                                                      'NativeAmerican', 'Oceanian',
+                                                                      'SouthEastAsian', 'NorthernEuropean',
+                                                                      'SubsaharanAfrican')), ] #nrow(metasub_data)=1760
+  
+  print(paste0('nrow of metasub_data after removing gene pools: ',nrow(metasub_data)))
+  
+  metasub_data$GRC <- NA
+  for(i in 1:nrow(metasub_data)){
+    metasub_data$GRC[i] <- as.character(reference_fam$V2[which(reference_fam$V1 == metasub_data$Populations[i])])
+  }
+  print('metasub_data:')
+  str(metasub_data)
+  
+  # Add meta information
+  meta <- read.csv('../meta_table') #nrow(meta)=14008
+  source('../add_meta.R')
+  metasub_data_meta <- add_meta_reich(metasub_data, meta)
+  
+  if(sum(is.na(metasub_data_meta$longitude)) > 0){
+    str(metasub_data_meta)
+    stop(paste0('Number of NA longitude: ',sum(is.na(metasub_data_meta$longitude))))
+  }else{
+    metasub_data_meta$latitude <- as.numeric(metasub_data_meta$latitude)
+    metasub_data_meta$longitude <- as.numeric(metasub_data_meta$longitude)
+    
+    print('metasub_data_meta:')
+    str(metasub_data_meta)
+    
+    save(metasub_data_meta, file='metasub_data_maf_ref.rdata')
+    system('rm MAF_reference.rdata')
+  }
+
+  ```
+ 
                 
 
 
