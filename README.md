@@ -214,6 +214,12 @@ rf_model_training <- function(qfile_nogp_popFilter, tag, extraColumn=''){
   print(c(mean(MetasubDataPreds$Distance_from_origin ),
           median(MetasubDataPreds$Distance_from_origin ),
           median(MetasubDataPreds$Distance_from_origin[which(MetasubDataPreds$Distance_from_origin < 100)])))
+  
+  if(!file.exists('../median_distance_from_the_origin')){
+    system("touch median_distance_from_the_origin")
+  }
+  system(paste0("echo '",ii,",",median(MetasubDataPreds$Distance_from_origin ),"'  >> median_distance_from_the_origin"))
+
 }
 
 
@@ -687,6 +693,7 @@ to navigate to the directory having split sample sets in the number of current s
   head(benchmark)
   
   save(benchmark, file = 'benchmark.rdata')
+  write.table(benchmark$feature, file = 'benchmark.snp', quote = F, row.names = F, col.names = F)
   
   ##### null importance #####
   null_imp_df <- data.frame()
@@ -804,8 +811,16 @@ to navigate to the directory having split sample sets in the number of current s
   + 2.2.5. Extract selected SNPs in training set + Run ADMIXTURE in supervised mode for training set after feature selection
   
   ```r
-     system("sh ../aft_fea_sel_command")
-     system("rm selected_fea_score*")
+    load('metasub_data_maf_ref.rdata')
+
+    system("plink --bfile baseline_overlap_qc --extract split300.snp --make-bed --out selected_fea_score")
+    # Generate population  file for ADMIXTURE in supervised mode
+    system("cut -f1-2 -d ' ' selected_fea_score.fam > selected_fea_score.pop.txt")
+    system(paste0("printf '%.0s\n' {1..",nrow(metasub_data_meta),"}  > selected_fea_score.pop")) #if any sample was filtered out previously when running add_meta_reich function in 2.2.4 section, the number here no longer holds. It should always be the number of lines in selected_fea_score.fam 
+
+    system("sh ../aft_fea_sel_command")
+    system("rm selected_fea_score*")
+
   ```
                  
   where *aft_fea_sel_command*:
@@ -822,6 +837,318 @@ to navigate to the directory having split sample sets in the number of current s
       paste out_ind_id_selected_fea_score selected_fea_score.9.Q > out_Q_values_ref_selected_fea_score_$2
       sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tNorthern European\tOceanian\tSouthern African\tSoutheast Asian\tSouthwest Asian\tSubsaharan African' out_Q_values_ref_split300
   ```
+  
+  + 2.2.6. Model training by random forest and prediction for training set
+  ```r
+    qfile <- read.table('out_Q_values_ref_split300', header = T, sep = '\t')
+
+    # Add meta information
+    meta <- read.csv('../meta_table') 
+
+    qfile_nogp <- qfile[-which(qfile$Population %in% c('NorthEastAsian', 'Mediterranean',
+                                                   'SouthAfrican', 'SouthWestAsian',
+                                                   'NativeAmerican', 'Oceanian',
+                                                   'SouthEastAsian', 'NorthernEuropean',
+                                                   'SubsaharanAfrican')), ] 
+    qfile_nogp$Populations<- as.character(qfile_nogp$Populations)
+    qfile_nogp_popFilter <- add_meta_reich(qfile_nogp, meta)
+    qfile_nogp_popFilter <- droplevels(qfile_nogp_popFilter)
+    str(qfile_nogp_popFilter)
+    save(qfile_nogp_popFilter, file =  'out_Q_values_ref_split300.rdata')
+
+    qfile_nogp_popFilter$GRC <- as.character(qfile_nogp_popFilter$GRC)
+    if(sum(is.na(qfile_nogp_popFilter$longitude)) > 0){ # avoid the case that any longitude value from meat_table is invalid
+      qfile_nogp_popFilter <- qfile_nogp_popFilter[-which(is.na(qfile_nogp_popFilter$longitude)),]
+    }
+
+    rf_model_training(qfile_nogp_popFilter,tag = 'split300')
+
+  ```
+                     
+* 2.3. Set the selected SNPs from the split set having the smallest distance from the origin in training set
+
+```r
+    setwd('~/')
+    distance_in_100runs <- read.csv('median_distance_from_the_origin', header = F)
+    distance_in_100runs <- distance_in_100runs[order(distance_in_100runs$V2, decreasing = F),]# order based on the median distance from the origin from the smallest to the highest 
+    the_best_set <- distance_in_100runs[1,] # the set we finally select
+    print(the_best_set)
+                   
+```
+
+* 2.4. AIM selection for the test set in the best split set
+  
+  In this step, most of codes are same to other sections in 2.. However, only the test set in the best split set is used, and no baseline modeling needed.
+  
+  All following codes in R can be put into *test_pipeline.R*:
+  
+  (Note that *<best_num>* represents *the number from 100 runs for the best split set*)
+  ```r
+    setwd(paste0('dt',the_best_set[,1]))
+    
+    system('sh test_preparation')
+  ```
+  
+  where *test_preparation*:
+  ```console
+    # since the coding of base is different for AADR set and ancestral population set, convert the base in AADR set
+    ~/bin/plink-1.07-x86_64/plink --bfile test_reich --allele1234 --make-bed --out test_reich_qc --noweb
+
+    # try to merge training set with ancestral population set, will get an error due to different allelic location in 2 sets, will automatically generate a .missno file
+    plink --bfile test_reich_qc --bmerge ../../genepool_overlap.bed ../../genepool_overlap.bim ../../genepool_overlap.fam  --make-bed --out test_overlap --noweb --allow-no-sex
+
+    # remove SNPs in different alleleic location
+    plink --bfile ../../genepool_overlap --exclude genepool_overlap_missnp --make-bed --out genepool_overlap_qcplink --bfile test_reich_qc --exclude test_reich_qc_missnp --make-bed --out reich_here_qc2
+
+    ### To avoid error in ADMIXTURE due to some of samples having all SNPs missing, do quality control for the set
+    # Calculate missing rate 
+    plink --bfile test_overlap --missing --out test_overlap --noweb
+
+    # Get the number of SNPs in test_overlap
+    wc -l test_overlap.bim # to get the number of SNPs in test_overlap
+
+    # Get samples having all SNPs missing
+    cat test_overlap.imiss  | awk '{if($4==109627) print $2}' >  test_overlap_missing_all_SNPs 
+
+    # Remove collected samples
+    cat test_overlap.fam | grep -wEf test_overlap_missing_all_SNPs > test_overlap_removeIndividual.txt  
+    plink --bfile test_overlap --remove test_overlap_removeIndividual.txt --noweb --allow-no-sex --make-bed --out test_overlap_qc
+  ```
+  
+  ```r
+    ########## make frequency file and PED file for test set  ##########
+    
+    system("plink --bfile test_overlap_qc --recode --tab --out CONVERTTest")
+    system("plink --bfile test_overlap_qc --freq --noweb")
+    system("mv plink.frq test.frq")
+    
+    # If the disk size is highly limited, these files can be removed
+    # system('rm test_overlap.*')
+    # system('rm genepool_overlap*')
+    # system('rm test_reich*')
+    # system('rm reich_here*')
+    # system('rm CONVERTTest.map')
+    # system('rm CONVERTTest.log')
+    # system('rm CONVERTTest.nosex')
+    
+    ########## Generate minor allele frequency table for test dataset ##########
+    ##### Construct MAF table #####
+    # extracted markers from reference
+    marker_frq <- read.table('test.frq')
+    marker_ped <- read.table('CONVERTTest.ped', sep = '\t')
+    
+    metasub_data <- maf_tbl_generation(marker_frq, marker_ped,
+                                       'MAF_test.rdata')
+    system('rm CONVERTTest.ped')
+    
+    
+    ##### Add meta data to MAF table #####
+    
+    load('MAF_test.rdata')
+    reference_fam <- read.table('test_sample', sep='\t')[-1,]
+    metasub_data <- metasub_data[-which(metasub_data$Populations %in% c('NorthEastAsian', 'Mediterranean',
+                                                                        'SouthAfrican', 'SouthWestAsian',
+                                                                        'NativeAmerican', 'Oceanian',
+                                                                        'SouthEastAsian', 'NorthernEuropean',
+                                                                        'SubsaharanAfrican')), ]
+    
+    print(paste0('nrow of metasub_data after removing gene pools: ',nrow(metasub_data)))
+    
+    metasub_data$GRC <- NA
+    for(i in 1:nrow(metasub_data)){
+      metasub_data$GRC[i] <- as.character(reference_fam$V2[which(reference_fam$V1 == metasub_data$Populations[i])])
+    }
+    print('metasub_data:')
+    str(metasub_data)
+    
+    # Add meta information
+    meta <- read.csv('../meta_table')
+    metasub_data_meta <- add_meta_reich(metasub_data, meta)
+    
+    if(sum(is.na(metasub_data_meta$longitude)) > 0){
+      str(metasub_data_meta)
+      stop(paste0('Number of NA longitude: ',sum(is.na(metasub_data_meta$longitude))))
+    }else{
+      metasub_data_meta$latitude <- as.numeric(metasub_data_meta$latitude)
+      metasub_data_meta$longitude <- as.numeric(metasub_data_meta$longitude)
+      
+      print('metasub_data_meta:')
+      str(metasub_data_meta)
+      
+      save(metasub_data_meta, file='metasub_data_maf_test.rdata')
+      system('rm MAF_test.rdata')
+    }
+    
+    
+    ########## feature selection with null importance for test set ##########
+    
+    ##### Data preparation #####
+    load('metasub_data_maf_test.rdata')
+    
+    trial_dt <- metasub_data_meta
+    trial_dt <- trial_dt[,c(2:(ncol(trial_dt)-4),
+                            grep('latitude', colnames(trial_dt)),
+                            grep('longitude', colnames(trial_dt)))] # only remains MAF columns, latitude column, and longitude column 
+    
+    x <- trial_dt
+    features <- colnames(trial_dt)[c(1:(ncol(trial_dt)-2))]
+    if(length(features) + 5 != ncol(metasub_data_meta)){ # 5 columns : Populations, GRC, country, latitude, longitude
+      stop('Number of length +5 not equal to MAF table') # if the equation does not meet, more/less features were extracted
+    }
+    
+    
+    ##### benchmarking generation #####
+    benchmark <- null_importance_select(x=x, features= features,
+                                        shuffle=F, seed=123)
+    print('benchmark:')
+    head(benchmark)
+    
+    save(benchmark, file = 'benchmark_test.rdata')
+    write.table(benchmark$feature, file = 'benchmark_test.snp', quote = F, row.names = F, col.names = F)
+    
+    ##### null importance #####
+    null_imp_df <- data.frame()
+    nb_runs <- 80 # shuffle 80 times
+    start_time <- Sys.time()
+    dsp <- c() 
+    for(i in 1:nb_runs){
+      # Get current run importances
+      imp_df <- null_importance_select(x=x, features= features,
+                                       shuffle=T, seed=123)
+      imp_df$run <- i
+      # Concat the latest importances with the old ones
+      if(nrow(null_imp_df)==0){
+        null_imp_df <- imp_df
+      }else{
+        null_imp_df<- rbind(null_imp_df, imp_df)
+      }
+      # Display current run and time used
+      spent = Sys.time() - start_time
+      dsp <- c(dsp,paste0('Done with    ', i,' of ',nb_runs, '    (spent ', spent,')' )) 
+      print(dsp)
+      
+    }
+    end_time <- Sys.time()
+    time_for_testPreds_ind <- end_time - start_time
+    print(time_for_testPreds_ind)
+    
+    print('null_imp_df:')
+    head(null_imp_df)
+    
+    save(null_imp_df, file = 'null_imp_df_test.rdata')
+    
+    
+    ##### sync features in null importance and benchmark #####
+    load('null_imp_df_test.rdata')
+    load('benchmark_test.rdata')
+    null_imp_df.cp <- null_imp_df
+    benchmark.cp <- benchmark
+    null_imp_fea <- unique(null_imp_df.cp$feature)
+    
+    # if features in benchmark does not present in features in data frame having 80 shuffle feature importance results, add this benchmark feature.
+    for(j in 1:nrow(benchmark.cp)){ 
+      current_fea_benchmark <- benchmark.cp$feature[j]
+      if(!current_fea_benchmark %in% null_imp_df$feature){
+        null_imp_df <- rbind(as.data.frame(null_imp_df),
+                             c(current_fea_benchmark, 0, 0, 0))
+      }
+    }
+    if(sum(!benchmark.cp$feature %in% null_imp_fea) + length(null_imp_fea) != length(unique(null_imp_df$feature))){
+      print(paste0('num of features in benchmark not in null_imp + num of features in null_imp: ',sum(!benchmark.cp$feature %in% null_imp_fea) + length(null_imp_fea)))
+      print(paste0('num of features in null_imp after adding', length(unique(null_imp_df$feature))))
+      stop('check the equivalence between benchmark$feature and null_imp$feature')
+      
+    }else{
+      # if features in data frame having 80 shuffle feature importance results does not present in features in benchmark, add this feature
+      for(i in 1:length(null_imp_fea)){
+        current_fea <- null_imp_fea[i]
+        if(!current_fea %in% benchmark$feature){
+          benchmark <- rbind(as.data.frame(benchmark), c(current_fea, 0, 0))
+        }
+      }
+      
+      if(  nrow(benchmark) == length(unique(null_imp_df$feature)) ){
+        benchmark$importance_gain <- as.numeric(benchmark$importance_gain)
+        benchmark$importance_split <- as.numeric(benchmark$importance_split)
+        null_imp_df$importance_gain <- as.numeric(null_imp_df$importance_gain)
+        null_imp_df$importance_split <- as.numeric(null_imp_df$importance_split)
+        null_imp_df$run <- as.numeric(null_imp_df$run)
+        
+        save(benchmark, file = 'benchmark_full_test.rdata')
+        save(null_imp_df, file = 'null_imp_df_full_test.rdata')
+        
+      }else{
+        print('num of features in benchmark: ', nrow(benchmark))
+        print('num of features in null_imp: ', length(unique(null_imp_df$feature)))
+        stop('num of row in benchmark does not equal to features in null_imp_df')
+      }
+      
+    }
+    
+    
+    
+    ##### calculate the feature scoring for each feature in benchmark #####
+    load('benchmark_full_test.rdata')
+    load('null_imp_df_full_test.rdata')
+    
+    feature_scores <- data.frame(feature=NA, split_score=NA, gain_score=NA)
+    for (f in unique(benchmark$feature)){
+      f_null_imps_gain <- null_imp_df$importance_gain[null_imp_df$feature == f]
+      f_act_imps_gain <- mean(benchmark$importance_gain[benchmark$feature == f])
+      gain_score <- log(1e-10 + f_act_imps_gain / (1 + quantile(f_null_imps_gain, c(.75))[[1]]))  # Avoid divide by zero
+      f_null_imps_split <- null_imp_df$importance_split[null_imp_df$feature == f]
+      f_act_imps_split <- mean(benchmark$importance_split[benchmark$feature == f])
+      split_score <- log(1e-10 + f_act_imps_split / (1 +  quantile(f_null_imps_split, c(.75))[[1]]))  # Avoid divide by zero
+      feature_scores<- rbind(feature_scores,
+                             c(f, split_score, gain_score))
+      
+    }
+    
+    scores_df <- feature_scores[-1,]
+    scores_df$split_score <- as.numeric(scores_df$split_score)
+    scores_df$gain_score <- as.numeric(scores_df$gain_score)
+    
+    print('75 percentile scores_df:')
+    str(scores_df)
+    
+    save(scores_df, file = 'scores_df_75_test.rdata')
+    
+    #### select the features in top 300 feature score ####
+    filter_selected_fea <- scores_df$feature[which(scores_df$gain_score>0 & scores_df$split_score>0)]
+    
+    filter_selected_fea.order <- filter_selected_fea[order(filter_selected_fea, decreasing = T),]
+    write.table(filter_selected_fea.order[c(1:300)], file = 'split300_test.snp', quote = F, row.names = F, col.names = F)
+    
+    
+    
+    
+    
+    ########## Extract selected SNPs in training set + Run ADMIXTURE in supervised mode for training set after feature selection  ##########
+    
+    # extract selected SNPs from the training set
+    load('metasub_data_maf_test.rdata')
+    
+    system("plink --bfile test_overlap_qc --extract split300_test.snp --make-bed --out selected_fea_score_test")
+  ```
+                                 
+  * 2.5. Confirm the performance of curated AIM set using AADR set 
+  
+  3 AIM sets for training set and test set will be tested:
+                                 
+  1. baseline
+        
+  2. AIMs found in the benchamrk of feature selection with null importance (benchmark)
+                                 
+  3. AIMs in top 300 feature scores from feature selection with null importance (split300)
+  
+    + Use test set samples and selected AIMs to train and predict the training set 
+                                 
+  
+  ```r
+    
+  ```
+  
+  
                                  
                            
  
