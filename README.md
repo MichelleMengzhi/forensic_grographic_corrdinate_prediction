@@ -31,9 +31,11 @@ All required packages in R are listed in packages.R
 > 2. AIM set curation using AADR set 
 Note: Only the final result files (in 2..) is provided in *Data* directory
 * 2.1. Randomly split AADR samples into 2 based on a filtration criteria, do 100 times
-  The filtration criteria:
-  Before data splitting, countires having sample size < 5 should be discarded.
-  During splitting, split smaples in each country into 2 sets in same size. If the sample size after splitting < 5, all samples in this country are put into training set. Otherwise, training set and test set will get random samples from this country in same size.
+  
+  
+  The filtration criteria:  
+  Before data splitting, countires having sample size < 5 should be discarded.  
+  During splitting, split smaples in each country into 2 sets in same size. If the sample size after splitting < 5, all samples in this country are put into training set. Otherwise, training set and test set will get random samples from this country in same size.  
   Codes here are performed in R 4.1.2. 
   ```r
   # load meta
