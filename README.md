@@ -6,7 +6,15 @@
 
 This is the README file containing the workflow to construct this forensic geopragic cooridnate prediction pipeline.
 
-Due to the size limitation of github, not all required input are available in *Data* directory.
+The workflow randomly split AADR set into 2 subsets, select AIMs based on these 2 subsets, and predict the distance from the origin by the ancestral population portion calculated, based on selected AIMs, for 100 times. The selected AIM set from the best set, having the smallest predicted distance from the origin, becomes the AIM set used for any new test set. The performance of selected AIM sets are measured by the median of distance from the origin prediction in
+
+using the selected AIM set from one subset in the best split set to predict the other subset;
+
+using either selected AIM set from one of subset in the best split set to predict a new test set (output_645);
+
+using leave-one-out precedure to predict the whole AADR set.
+
+Due to the size limitation of github, not all required input are available on github. Some of files are in *Data* directory, and some of files are in the main directory for the consistency to the following code
 
 All required packages in R are listed in packages.R  
 
