@@ -820,7 +820,7 @@ to navigate to the directory having split sample sets in the number of current s
     qfile <- read.table('out_Q_training_baseline', header = T, sep = '\t')
 
     # Add meta information
-    meta <- read.csv('../meta_table') 
+    meta <- read.csv('~/Data/meta_table') 
   
     qfile_nogp <- qfile[-which(qfile$Population %in% c('NorthEastAsian', 'Mediterranean',
                                                    'SouthAfrican', 'SouthWestAsian',
@@ -893,7 +893,7 @@ to navigate to the directory having split sample sets in the number of current s
   str(metasub_data)
   
   # Add meta information
-  meta <- read.csv('../meta_table') 
+  meta <- read.csv('~/Data/meta_table') 
   metasub_data_meta <- add_meta_reich(metasub_data, meta)
   
   if(sum(is.na(metasub_data_meta$longitude)) > 0){
@@ -1410,7 +1410,7 @@ Use the predicted median distance from the origin as the value to evaluate the p
     str(metasub_data)
     
     # Add meta information
-    meta <- read.csv('../meta_table')
+    meta <- read.csv('~/Data/meta_table')
     metasub_data_meta <- add_meta_reich(metasub_data, meta)
     
     if(sum(is.na(metasub_data_meta$longitude)) > 0){
