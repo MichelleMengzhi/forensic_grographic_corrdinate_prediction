@@ -19,7 +19,21 @@ All required packages in R are listed in packages.R
 
 > Load packages in R 4.1.2
 ``` r
-
+library(caret)
+library(dplyr)
+library(plyr)
+library(geosphere)
+library(maps)
+library(ggplot2)
+library(lightgbm)
+library(geosphere)
+library(xgboost)
+library(e1071)
+library(randomForest)
+library(openxlsx)
+library(countrycode)
+library(MazamaSpatialUtils)
+library(scatterpie)
 ```
 
   
@@ -653,6 +667,7 @@ mGPS <-function(training = NULL,
 
 barplot_admixture <- function(meta, pic_file_path){
   # Generate a PDF file having bar plot showing admixture portion for all sample, grouped by country, ordered by continent
+  # The drawing part highly refers to the ADMIXTURE visualization tool constructed by Feng Q. (https://doi.org/10.1016/j.gpb.2018.05.002)
   
   # @meta: the data frame having population, admixture portion, latitude, longitude, country for all samples
   # @pic_file_path: a string of pdf output file path
