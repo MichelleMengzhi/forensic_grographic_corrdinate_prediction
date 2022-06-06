@@ -912,7 +912,7 @@ to navigate to the directory having split sample sets in the number of current s
 
   ```
   
-  feature selection with null importance
+  + 2.2.5. feature selection with null importance
   ```r
   ##### Data preparation #####
   load('metasub_data_maf_ref.rdata')
@@ -1051,7 +1051,7 @@ to navigate to the directory having split sample sets in the number of current s
 
   ```
                                  
-  + 2.2.5. Extract selected SNPs in training set + Run ADMIXTURE in supervised mode for training set after feature selection
+  + 2.2.6. Extract selected SNPs in training set + Run ADMIXTURE in supervised mode for training set after feature selection
   
   ```r
     load('metasub_data_maf_ref.rdata')
@@ -1081,7 +1081,7 @@ to navigate to the directory having split sample sets in the number of current s
       sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tNorthern European\tOceanian\tSouthern African\tSoutheast Asian\tSouthwest Asian\tSubsaharan African' out_Q_values_ref_split300
   ```
   
-  + 2.2.6. Model training by random forest and prediction for training set
+  + 2.2.7. Model training by random forest and prediction for training set
   ```r
     qfile <- read.table('out_Q_values_ref_split300', header = T, sep = '\t')
 
@@ -1743,7 +1743,7 @@ Use the predicted median distance from the origin as the value to evaluate the p
       qfile_test <- read.table(paste0('out_Q_',ind,'_test_',ite), header = T, sep = '\t')
       
       # Add meta information for training set
-      meta <- read.csv('meta_table') #nrow(meta)=14008
+      meta <- read.csv('~/Data/meta_table')
     
       qfile_train_nogp <- qfile_train[-which(qfile_train$Population %in% c('NorthEastAsian', 'Mediterranean',
                                                                            'SouthAfrican', 'SouthWestAsian',
@@ -1913,10 +1913,437 @@ Use the predicted median distance from the origin as the value to evaluate the p
     
     where run_rf_train_test.R is same to the one in *using test set to predict training set*
   
+> 3. Leave-one-out procedure
   
+  In leave-one-out procedure, all sample are set as test set once against the rest of samples as training set. 
+  
+  * Create a new directory for this procedure, and organize the directory
+  
+  Note that <best_num> represents the number from 100 runs for the best split set
+  ```r
+    # create a directory for this process
+    setwd('~/')
+    system('mkdir LOO')
+    setwd('~/LOO')
+    
+    # copy samples and selected AIM sets to a directory
+    system('mkdir sample_feature')
+    system(paste0('cp ../dt', <best_num> ,'/reference_sample ../dt', <best_num> ,'/test_sample ../dt', <best_num> ,'/split300*.snp ../dt', <best_num> ,'/benchmark*.snp sample_feature/'))
+    
+    # make a directory to store all intermediate files (i.e. the files not have prediction result)
+    system('mkdir inter_file')
+    
+    # # make a directory to store sh files for the pipeline from ADMIXTURE calculation to test set prediction for each running case
+    # system('mkdir sh_file')
+    
+    # make a directory to store data frame with predicted result added in rdata format)
+    system('mkdir prediction')
+    
+    # create plain text file to store prediction results and mean R2
+    system('touch baseline_rf_rlt')
+    system('touch bench_rf_rlt')
+    system('touch split300_rf_rlt')
+    system('touch mean_R2')
+
+  ```
+  
+  Since this procedure is super time consuming, we highly suggest to run cases (having one sample as test set and the rest as training set) in parallel to save run time if users have access to any super computer. Here we show the pipeline to gather 7 cases as a job to run in parallel. The job submission for each job, requiring the number of nodes and running time, is ignored here.
+  
+  For each case, if the sample was in the training set of the best split set, AIM sets selected by test set of the best split set should be applied for this case, and vice versa.
+  
+  ```r
+    reference_sample <- as.data.frame(read.table('sample_feature/reference_sample', header = T)[,c(1:2)])
+    test_sample <- as.data.frame(read.table('sample_feature/test_sample', header = T)[,c(1:2)])
+    
+    # add GRC and Populations 
+    reference_sample <- cbind(reference_sample, reference_sample[,1])
+    colnames(reference_sample) <- c('Populations', 'GRC', 'sampleID')
+    test_sample <- cbind(test_sample, test_sample[,1])
+    colnames(test_sample) <- c('Populations', 'GRC', 'sampleID')
+    
+    
+    # Add meta information
+    meta <- read.csv('~/Data/meta_table') 
+    reference_sample_meta <- add_meta_reich(reference_sample, meta)
+    save(reference_sample_meta, file = 'reference_sample_meta.rdata')
+    test_sample_meta <- add_meta_reich(test_sample, meta)
+    save(test_sample_meta, file = 'test_sample_meta.rdata')
+    
+    
+    ##### for test sample from the best split set #####
+    index_lst_test <- c()
+    ct <-1
+    for(i in 1:nrow(test_sample_meta)){
+      # use features selected from reference samples
+      test_name <- paste0(test_sample_meta$Populations[i],test_sample_meta$sampleID[i])
       
+      ### training sample ###
+      the_training_samples_meta <- rbind(test_sample_meta[-i,], reference_sample_meta)
+      training_sample_file_name <- paste0('inter_file/',test_name,'_training_sample')
+      write.table(the_training_samples_meta[, c(3,2)], file = training_sample_file_name, 
+                  quote = F, row.names = F, col.names = F)
+      
+      # extract training samples
+      system(paste0('plink --bfile ../reich_here_overlap_qc2 --keep ',training_sample_file_name,
+                    ' --make-bed --out inter_file/',test_name,'_training --noweb'))
+      
+      # merge genepool to training samples
+      # for baseline
+      system(paste0('plink --bfile inter_file/',test_name,
+                    '_training --bmerge ../genepool_overlap_qc.bed ../genepool_overlap_qc.bim ../genepool_overlap_qc.fam  --make-bed --out inter_file/',test_name,'_training_baseline_overlap --noweb --allow-no-sex'))
+      system(paste0("cut -f1-2 -d ' ' inter_file/",test_name,"_training_baseline_overlap.fam > inter_file/",test_name,"_training_baseline_overlap.pop.txt"))
+      system(paste0("printf '%.0s\n' {1..",nrow(the_training_samples_meta),"}  > inter_file/",test_name,"_training_baseline_overlap.pop"))
+      
+      # for benchmark
+      system(paste0('plink --bfile inter_file/',test_name,
+                    '_training_baseline_overlap --extract sample_feature/benchmark.snp  --make-bed --out inter_file/',test_name,'_training_selected_bench --noweb'))
+      system(paste0("cut -f1-2 -d ' ' inter_file/",test_name,"_training_selected_bench.fam > inter_file/",test_name,"_training_selected_bench.pop.txt"))
+      system(paste0("printf '%.0s\n' {1..",nrow(the_training_samples_meta),"}  > inter_file/",test_name,"_training_selected_bench.pop"))
+      
+      # for split300
+      system(paste0('plink --bfile inter_file/',test_name,
+                    '_training_baseline_overlap --extract sample_feature/socres_df.split.top300.snp  --make-bed --out inter_file/',test_name,'_training_selected_split300 --noweb'))
+      system(paste0("cut -f1-2 -d ' ' inter_file/",test_name,"_training_selected_split300.fam > inter_file/",test_name,"_training_selected_split300.pop.txt"))
+      system(paste0("printf '%.0s\n' {1..",nrow(the_training_samples_meta),"}  > inter_file/",test_name,"_training_selected_split300.pop"))
+      
+      
+      ### test sample ###
+      test_sample_file_name <- paste0('inter_file/',test_name,'_test_sample')
+      write.table(test_sample_meta[i, c(3,2)], file = test_sample_file_name, 
+                  quote = F, row.names = F, col.names = F)
+      # extract test samples
+      system(paste0('plink --bfile ../reich_here_overlap_qc2 --keep ',test_sample_file_name,
+                    ' --make-bed --out inter_file/',test_name,'_test --noweb'))
+      
+      # merge genepool to test samples
+      # for baseline
+      system(paste0('plink --bfile inter_file/',test_name,
+                    '_test --bmerge ../genepool_overlap_qc.bed ../genepool_overlap_qc.bim ../genepool_overlap_qc.fam  --make-bed --out inter_file/',test_name,'_test_baseline_overlap --noweb --allow-no-sex'))
+      system(paste0("cut -f1-2 -d ' ' inter_file/",test_name,"_test_baseline_overlap.fam > inter_file/",test_name,"_test_baseline_overlap.pop.txt"))
+      system(paste0("printf '%.0s\n' {1}  > inter_file/",test_name,"_test_baseline_overlap.pop"))
+      
+      # for benchmark
+      system(paste0('plink --bfile inter_file/',test_name,
+                    '_test_baseline_overlap --extract sample_feature/benchmark.snp  --make-bed --out inter_file/',test_name,'_test_selected_bench --noweb'))
+      system(paste0("cut -f1-2 -d ' ' inter_file/",test_name,"_test_selected_bench.fam > inter_file/",test_name,"_test_selected_bench.pop.txt"))
+      system(paste0("printf '%.0s\n' {1}  > inter_file/",test_name,"_test_selected_bench.pop"))
+      
+      # for split300
+      system(paste0('plink --bfile inter_file/',test_name,
+                    '_test_baseline_overlap --extract sample_feature/socres_df.split.top300.snp  --make-bed --out inter_file/',test_name,'_test_selected_split300 --noweb'))
+      system(paste0("cut -f1-2 -d ' ' inter_file/",test_name,"_test_selected_split300.fam > inter_file/",test_name,"_test_selected_split300.pop.txt"))
+      system(paste0("printf '%.0s\n' {1}  > inter_file/",test_name,"_test_selected_split300.pop"))
+      
+      
+      index_lst_test <- c(index_lst_test, test_name)
+      
+      if(length(index_lst_test) == 7 | i == nrow(test_sample_meta)){ # one job submission for 7 cases
+        message(paste0('=======================',paste(index_lst_test, collapse = ', '),'======================='))
+        system(paste0("echo '# run R script\nRscript --vanilla loo_pipeline.R ",ct," ",paste(index_lst_test, collapse = ' '),
+                      "' > sh_file/run_pipeline_",ct,".sh")) 
+        system(paste0("sh sh_file/run_pipeline_",ct,".sh"))
+        index_lst_test <- c()
+        if(ct %% 10 == 0){ # to avoid the case that required nodes from running jobs exceed the number of nodes that can be accessed on the supercomputer, as well as to avoid full disk memory since too many files generated from jobs running in parallel
+          Sys.sleep(600)
+        }
+        ct <- ct+1
+      }
+    }
+    
+    ##### for reference sample from the best split set #####
+    index_lst <- c()
+    for(i in 1:nrow(reference_sample_meta)){
+      ### use features selected from test samples
+      test_name <- paste0(reference_sample_meta$Populations[i],reference_sample_meta$sampleID[i])
+      
+      ### training sample ###
+      the_training_samples_meta <- rbind(reference_sample_meta[-i,], test_sample_meta)
+      training_sample_file_name <- paste0('inter_file/',test_name,'_training_sample')
+      write.table(the_training_samples_meta[, c(3,2)], file = training_sample_file_name,
+                  quote = F, row.names = F, col.names = F)
+      
+      # extract training samples
+      system(paste0('plink --bfile ../reich_here_overlap_qc2 --keep ',training_sample_file_name,
+                    ' --make-bed --out inter_file/',test_name,'_training --noweb'))
+      # merge genepool to training samples
+      # for baseline
+      system(paste0('plink --bfile inter_file/',test_name,
+                    '_training --bmerge ../genepool_overlap_qc.bed ../genepool_overlap_qc.bim ../genepool_overlap_qc.fam  --make-bed --out inter_file/',test_name,'_training_baseline_overlap --noweb --allow-no-sex'))
+      system(paste0("cut -f1-2 -d ' ' inter_file/",test_name,"_training_baseline_overlap.fam > inter_file/",test_name,"_training_baseline_overlap.pop.txt"))
+      system(paste0("printf '%.0s\n' {1..",nrow(the_training_samples_meta),"}  > inter_file/",test_name,"_training_baseline_overlap.pop"))
+      
+      # for benchmark
+      system(paste0('plink --bfile inter_file/',test_name,
+                    '_training_baseline_overlap --extract sample_feature/benchmark_test.snp  --make-bed --out inter_file/',test_name,'_training_selected_bench --noweb'))
+      system(paste0("cut -f1-2 -d ' ' inter_file/",test_name,"_training_selected_bench.fam > inter_file/",test_name,"_training_selected_bench.pop.txt"))
+      system(paste0("printf '%.0s\n' {1..",nrow(the_training_samples_meta),"}  > inter_file/",test_name,"_training_selected_bench.pop"))
+      
+      # for split300
+      system(paste0('plink --bfile inter_file/',test_name,
+                    '_training_baseline_overlap --extract sample_feature/socres_df.split.top300_test.snp  --make-bed --out inter_file/',test_name,'_training_selected_split300 --noweb'))
+      system(paste0("cut -f1-2 -d ' ' inter_file/",test_name,"_training_selected_split300.fam > inter_file/",test_name,"_training_selected_split300.pop.txt"))
+      system(paste0("printf '%.0s\n' {1..",nrow(the_training_samples_meta),"}  > inter_file/",test_name,"_training_selected_split300.pop"))
+      
+      ### test sample ###
+      test_sample_file_name <- paste0('inter_file/',test_name,'_test_sample')
+      write.table(reference_sample_meta[i, c(3,2)], file = test_sample_file_name,
+                  quote = F, row.names = F, col.names = F)
+      # extract test samples
+      system(paste0('plink --bfile ../reich_here_overlap_qc2 --keep ',test_sample_file_name,
+                    ' --make-bed --out inter_file/',test_name,'_test --noweb'))
+      # merge genepool to test samples
+      # for baseline
+      system(paste0('plink --bfile inter_file/',test_name,
+                    '_test --bmerge ../genepool_overlap_qc.bed ../genepool_overlap_qc.bim ../genepool_overlap_qc.fam  --make-bed --out inter_file/',test_name,'_test_baseline_overlap --noweb --allow-no-sex'))
+      system(paste0("cut -f1-2 -d ' ' inter_file/",test_name,"_test_baseline_overlap.fam > inter_file/",test_name,"_test_baseline_overlap.pop.txt"))
+      system(paste0("printf '%.0s\n' {1}  > inter_file/",test_name,"_test_baseline_overlap.pop"))
+      
+      # for benchmark
+      system(paste0('plink --bfile inter_file/',test_name,
+                    '_test_baseline_overlap --extract sample_feature/benchmark_test.snp  --make-bed --out inter_file/',test_name,'_test_selected_bench --noweb'))
+      system(paste0("cut -f1-2 -d ' ' inter_file/",test_name,"_test_selected_bench.fam > inter_file/",test_name,"_test_selected_bench.pop.txt"))
+      system(paste0("printf '%.0s\n' {1}  > inter_file/",test_name,"_test_selected_bench.pop"))
+      
+      # for split300
+      system(paste0('plink --bfile inter_file/',test_name,
+                    '_test_baseline_overlap --extract sample_feature/socres_df.split.top300_test.snp  --make-bed --out inter_file/',test_name,'_test_selected_split300 --noweb'))
+      system(paste0("cut -f1-2 -d ' ' inter_file/",test_name,"_test_selected_split300.fam > inter_file/",test_name,"_test_selected_split300.pop.txt"))
+      system(paste0("printf '%.0s\n' {1}  > inter_file/",test_name,"_test_selected_split300.pop"))
+      
+      index_lst <- c(index_lst, test_name)
+      
+      if(length(index_lst) == 7 | i == nrow(reference_sample_meta)){ # one job submission for 7 cases
+        message(paste0('=======================',paste(index_lst_test, collapse = ', '),'======================='))
+        system(paste0("echo '# run R script\nRscript --vanilla loo_pipeline.R ",ct," ",paste(index_lst_test, collapse = ' '),
+                      "' > sh_file/run_pipeline_",ct,".sh")) 
+        system(paste0("sh sh_file/run_pipeline_",ct,".sh"))
+        index_lst <- c()
+        if(ct %% 10 == 0){# to avoid the case that required nodes from running jobs exceed the number of nodes that can be accessed on the supercomputer, as well as to avoid full disk memory since too many files generated from jobs running in parallel
+          Sys.sleep(600)
+        }
+        ct <- ct+1
+      }
+    }
+
+  ```
+
+  where *loo_pipeline.R*:
+  ```r
+    args <- commandArgs(trailingOnly=TRUE)
+    ct <- args[[1]]
+    samples <- args[-1]
+    message(paste0('rf_',ct,'.sh is generated for ',paste(samples, collapse = ', ')))
+    
+    system(paste0("echo '# run R script\n' > sh_file/rf_",ct,".sh"))    
+    for(ind in samples){ # 7 samples
+      test_name <- ind
+      
+      ### extract AIM sets + ADMIXTURE in supervised mode for both training set and test set 
+      ### training sample ###
+      system(paste0('sh feature_selection.sh inter_file/ ',test_name,'_training '))
+      
+      ### test sample ###
+      system(paste0('sh feature_selection.sh inter_file/ ',test_name,'_test'))
+      
+      ### write into sh file and remove intermediate files
+      system(paste0("echo 'Rscript --vanilla run_rf_LOO.R ",test_name,"' >> sh_file/rf_",ct,".sh"))
+      system(paste0('rm inter_file/',test_name,'*')) # to avoid full disk memory
+      
+    }
+    system(paste0("sh sh_file/rf_",ct,".sh"))    
+          
+  ```            
   
-                                 
+  where *feature_selection.sh*:
+  ```console
+    #!/bin/sh
+
+    # $1: directory path (i.e. inter_file/)
+    # $2: test_name (<Population><name> for each sample) 
+
+    # baseline
+    cat $1$2_baseline_overlap.pop.txt | grep -E 'NorthEastAsian|Mediterranean|SouthAfrican|SouthWestAsian|NativeAmerican|Oceanian|SouthEastAsian|NorthernEuropean|SubsaharanAfrican' | cut -f1 -d' ' >> $1$2_baseline_overlap.pop
+
+    ~/admixture32 $1$2_baseline_overlap.bed -F 9 -j8
+    mv $2_baseline_overlap* $1/
+    cat $1$2_baseline_overlap.fam | cut -d ' ' -f1-2 > $1$2_out_ind_id
+    sed -i 's/ /\t/g' $1$2_out_ind_id
+    sed -i 's/ /\t/g' $1$2_baseline_overlap.9.Q
+    paste $1$2_out_ind_id $1$2_baseline_overlap.9.Q > $1out_Q_$2_baseline
+    sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tNorthern European\tOceanian\tSouthern African\tSoutheast Asian\tSouthwest Asian\tSubsaharan African'  $1out_Q_$2_baseline
+
+    # benchmark
+    wc -l $1$2_selected_bench.pop
+
+    cat $1$2_selected_bench.pop.txt | grep -E 'NorthEastAsian|Mediterranean|SouthAfrican|SouthWestAsian|NativeAmerican|Oceanian|SouthEastAsian|NorthernEuropean|SubsaharanAfrican' | cut -f1 -d' ' >> $1$2_selected_bench.pop
+    wc -l $1$2_selected_bench.pop
+
+    ~/admixture32 $1$2_selected_bench.bed -F 9 -j8
+    mv $2_selected_bench* $1/
+    cat $1$2_selected_bench.fam | cut -d ' ' -f1-2 > $1$2_out_ind_id_bench
+    sed -i 's/ /\t/g' $1$2_out_ind_id_bench
+    sed -i 's/ /\t/g' $1$2_selected_bench.9.Q
+    paste $1$2_out_ind_id_bench $1$2_selected_bench.9.Q > $1out_Q_$2_bench
+    sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tNorthern European\tOceanian\tSouthern African\tSoutheast Asian\tSouthwest Asian\tSubsaharan African'  $1out_Q_$2_bench
+
+    # split300
+    cat $1$2_selected_split300.pop.txt | grep -E 'NorthEastAsian|Mediterranean|SouthAfrican|SouthWestAsian|NativeAmerican|Oceanian|SouthEastAsian|NorthernEuropean|SubsaharanAfrican' | cut -f1 -d' ' >> $1$2_selected_split300.pop
+
+    ~/admixture32 $1$2_selected_split300.bed -F 9 -j8
+    mv $2_selected_split300* $1/
+    cat $1$2_selected_split300.fam | cut -d ' ' -f1-2 > $1$2_out_ind_id_split300
+    sed -i 's/ /\t/g' $1$2_out_ind_id_split300
+    sed -i 's/ /\t/g' $1$2_selected_split300.9.Q
+    paste $1$2_out_ind_id_split300 $1$2_selected_split300.9.Q > $1out_Q_$2_split300
+    sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tNorthern European\tOceanian\tSouthern African\tSoutheast Asian\tSouthwest Asian\tSubsaharan African'  $1out_Q_$2_split300
+
+    
+  ```
+      
+  and *run_rf_LOO.R*:
+  ```r
+    args <- commandArgs(trailingOnly=TRUE)
+    iteration <- c('baseline', 'bench', 'split300')
+    ind <- args[[1]]
+    
+    for(ite in iteration){ # basleine; benchmark; split300
+      message(paste('==========',ind,ite,'=========='))
+      
+      qfile_train <- read.table(paste0('inter_file/out_Q_',ind,'_training_',ite), header = T, sep = '\t') 
+      qfile_test <- read.table(paste0('inter_file/out_Q_',ind,'_test_',ite), header = T, sep = '\t')
+      
+      # Add meta information
+      meta <- read.csv('~/Data/meta_table')
+    
+      qfile_train_nogp <- qfile_train[-which(qfile_train$Population %in% c('NorthEastAsian', 'Mediterranean',
+                                                                           'SouthAfrican', 'SouthWestAsian',
+                                                                           'NativeAmerican', 'Oceanian',
+                                                                           'SouthEastAsian', 'NorthernEuropean',
+                                                                           'SubsaharanAfrican')), ] 
+      qfile_train_nogp$Populations<- as.character(qfile_train_nogp$Populations)
+      qfile_train_nogp_popFilter <- add_meta_reich(qfile_train_nogp, meta)
+      qfile_train_nogp_popFilter <- droplevels(qfile_train_nogp_popFilter)
+      print('qfile_train_nogp_popFilter:')
+      str(qfile_train_nogp_popFilter)
+      
+      qfile_test_nogp <- qfile_test[-which(qfile_test$Population %in% c('NorthEastAsian', 'Mediterranean',
+                                                                        'SouthAfrican', 'SouthWestAsian',
+                                                                        'NativeAmerican', 'Oceanian',
+                                                                        'SouthEastAsian', 'NorthernEuropean',
+                                                                        'SubsaharanAfrican')), ] 
+      qfile_test_nogp$Populations<- as.character(qfile_test_nogp$Populations)
+      qfile_test_nogp_popFilter <- add_meta_reich(qfile_test_nogp, meta)
+      qfile_test_nogp_popFilter <- droplevels(qfile_test_nogp_popFilter)
+      print('qfile_test_nogp_popFilter:')
+      str(qfile_test_nogp_popFilter)
+      
+      qfile_train_nogp_popFilter$GRC <- as.character(qfile_train_nogp_popFilter$GRC)
+      if(sum(is.na(qfile_train_nogp_popFilter$longitude)) > 0){
+        qfile_train_nogp_popFilter <- qfile_train_nogp_popFilter[-which(is.na(qfile_train_nogp_popFilter$longitude)),]
+      }
+      qfile_test_nogp_popFilter$GRC <- as.character(qfile_test_nogp_popFilter$GRC)
+      if(sum(is.na(qfile_test_nogp_popFilter$longitude)) > 0){
+        qfile_test_nogp_popFilter <- qfile_test_nogp_popFilter[-which(is.na(qfile_test_nogp_popFilter$longitude)),]
+      }
+      if(nrow(qfile_test_nogp_popFilter) != 1){
+        warning(paste0('Test sample ',ind,' does not have valid longitude, skip run RF'))
+      }else{
+        save(qfile_test_nogp_popFilter, file = paste0('prediction/',ind,'_',ite,'_rf.rdata'))
+        
+        ### Model training ###
+        rf_model_training_train_test(qfile_train_nogp_popFilter, qfile_test_nogp_popFilter, tag = c(ind, ite))
+        
+      }
+    }
+      
+  ```
+  After prediction of all cases have been done,  combine them into one data frame
+  
+  To have the prediciton result file list to iterate, get the output rdata file list in Bash command:
+  ```console
+     ls prediction/ > prediction_file_names                                
+  ``` 
+  
+  Iteratively bind all predictions into one data frame in R 4.1.2.
+  ```r
+    ## load file name list
+    file_names <- read.table('prediction_file_names', sep = '\t', header = F)[,1]
+    
+    ## prepare data frames
+    baseline_qfile <- data.frame()
+    bench_qfile <- data.frame()
+    split300_qfile <- data.frame()
+    unknown <- data.frame()
+    prediction_names <- c()
+    unkown_prediction_names <-c()
+    
+    ## Iterate all file names, load the file, and classify the data
+    for(the_file_name in file_names){
+      load(paste0('prediction/',the_file_name))
+      
+      file_name_split <- strsplit(gsub('.rdata','',the_file_name), 
+                                  split = '_')[[1]]
+      if(file_name_split[[(length(file_name_split)-1)]] == 'baseline'){ # classify to baseline
+        if(file_name_split[[length(file_name_split)]] == 'qfile'){
+          if(nrow(baseline_qfile) < 1){
+            baseline_qfile <- as.data.frame(add_preds)
+          }else{
+            baseline_qfile <- rbind(baseline_qfile, add_preds)
+          }
+          prediction_names <- c(prediction_names, paste0(add_preds[i,1], add_preds[i,2]))
+        }
+      }else if(file_name_split[[(length(file_name_split)-1)]] == 'bench'){ # classify to benchmark
+        if(file_name_split[[length(file_name_split)]] == 'qfile'){
+          if(nrow(bench_qfile) < 1){
+            bench_qfile <- as.data.frame(add_preds)
+          }else{
+            bench_qfile <- rbind(bench_qfile, add_preds)
+          }
+          
+        }
+      }else if(file_name_split[[(length(file_name_split)-1)]] == 'split300'){ # classify to split300
+        if(file_name_split[[length(file_name_split)]] == 'qfile'){
+          if(nrow(split300_qfile) < 1){
+            split300_qfile <- as.data.frame(add_preds)
+          }else{
+            split300_qfile <- rbind(split300_qfile, add_preds)
+          }
+          
+        }
+      }else{ # in case any unrecognized file name
+        if(file_name_split[[length(file_name_split)]] == 'qfile'){
+          if(nrow(unknown) < 1){
+            unknown <- as.data.frame(add_preds)
+          }else{
+            unknown <- rbind(unknown, add_preds)
+          }
+          unkown_prediction_names <-c(unkown_prediction_names,  file_name_split[[1]])
+        }
+        
+      }
+      
+    }
+    
+    ## Check if there is any unrecognized prediction result
+    unkown_prediction_names <- unique(unkown_prediction_names)
+    if(length(unkown_prediction_names) >= 1){
+      print('unknown prediciton names: ')
+      print(unkown_prediction_names)
+      
+    }else{
+      print('No unknown prediction file!')
+      message('No unknown prediction file!')
+      
+    }
+    
+    ## Save combined prediction results into rdata file
+    save(baseline_qfile, file = '~/Data/baseline_qfile.rdata')
+    save(bench_qfile, file = '~/Data/bench_qfile.rdata')
+    save(split300_qfile, file = '~/Data/split300_qfile.rdata')
+
+  ```
+  
+> 4. Visualization
                            
  
   
