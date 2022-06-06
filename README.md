@@ -3193,10 +3193,11 @@ sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tN
     MetasubDataPreds$continent[which(MetasubDataPreds$country=='Abkhazia')] <- 'Asia'
     MetasubDataPreds$continent[which(MetasubDataPreds$country=='Czechoslovakia')] <- 'Europe'
     
-    distance_map_visualization(MetasubDataPreds, filter_level='all', png_path = 'qfile_prediction/baseline_worldmap')
-    distance_map_visualization(MetasubDataPreds, filter_level='notSameContinent', png_path = 'qfile_prediction/baseline_worldmap')
-    distance_map_visualization(MetasubDataPreds, filter_level='notSameContinent1000', png_path = 'qfile_prediction/baseline_worldmap')
-    distance_map_visualization(MetasubDataPreds, filter_level='notSameContinent500', png_path = 'qfile_prediction/baseline_worldmap')
+    distance_map_visualization(MetasubDataPreds, filter_level='all', png_path = '<file path without pic format>') # filter_level will be added as suffix into the final file path
+    distance_map_visualization(MetasubDataPreds, filter_level='notSameContinent', png_path = '<file path without pic format>') 
+    distance_map_visualization(MetasubDataPreds, filter_level='notSameContinent1000', png_path = '<file path without pic format>')
+    distance_map_visualization(MetasubDataPreds, filter_level='notSameContinent500', png_path = '<file path without pic format>')
+
 
   ```
  
