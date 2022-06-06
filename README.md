@@ -457,6 +457,200 @@ rf_model_training_train_test <- function(qfile_train_nogp_popFilter, qfile_test_
 }
 
 
+mGPS <-function(training = NULL,
+                testing = NULL,
+                classTarget,
+                hierarchy = c('genepool','population','latitude','longitude'),
+                variables,
+                nthread = 8,
+                coast = NULL) {
+  # Return predicted latitude and longitude using mGPS model
+  
+  # @training: the data frame of training set, having sample population, corresponding ancestral population portion calculation, GRC, origin latitude and longitude, as well as country.
+  # @testing: the data frame of test set, having sample population, corresponding ancestral population portion calculation, GRC, origin latitude and longitude, as well as country.
+  # @classTarget: a string of the last target to train model. The final model is trained by the training data frame, with predicted values from the models trained in the first 3 targets in hierarchy list hierarchically.  
+  # @hierarchy: a list of ordered targets for model training hierarchically.
+  # @variables: a list of column names used in model training
+  # @nthread: number of threads to use when running this function. The default is 8.
+  # @coast: If coast = NULL, which is the deault, it means no need data adjustment after prediction; otherwise, it should be the coastline data generated in rf_model_training function. 
+  
+  
+  
+  #Check for training set
+  if(is.null(training)){
+    return(message("No training set given"))
+  } else{
+    
+    training <- droplevels(training)
+    
+    #Train mGPS with 5-fold cross validation of training set
+    message("Training mGPS...")
+    
+    set.seed(1234)
+    folds <- createFolds(training[,classTarget], k = 5, returnTrain = T)
+    
+    
+    message('working on trainControl')
+    trControlClass <-  trainControl(
+      method = "cv",
+      number = 5,  
+      verboseIter = FALSE,
+      returnData = FALSE,
+      search = "grid",
+      savePredictions = "final",
+      classProbs = T,
+      allowParallel = T,
+      index = folds )
+    
+    
+    message('working on trainControl without classProb')
+    trControl <-  trainControl(
+      method = "cv",
+      number = 5,  
+      verboseIter = FALSE,
+      returnData = FALSE,
+      search = "grid",
+      savePredictions = "final",
+      allowParallel = T,
+      index = folds)
+    
+    
+    tune_grid <- expand.grid(
+      nrounds = c(300,600), 
+      eta = c( 0.05, 0.1),
+      max_depth = c(3,6,9),
+      gamma = 0,
+      colsample_bytree = c(0.6,0.8),
+      min_child_weight = c(1),
+      subsample = (0.7)
+    )
+    
+    if(length(hierarchy) == 4){
+      message('length(hierarchy)==4')
+      message('model training')
+      Xgb_region <- train(x = training[,variables],y = factor(training[,hierarchy[1]]),
+                          method = "xgbTree",
+                          trControl = trControlClass,
+                          tuneGrid = tune_grid ,
+                          nthread = nthread
+      )
+      
+      l1_train <- data.frame(training[,c(variables)],Xgb_region[["pred"]][order(Xgb_region$pred$rowIndex),levels(factor(training[,hierarchy[1]])) ] )
+      
+    }else{
+      message('hierachy != 4')
+      message('model training')
+      l1_train <- training[,c(variables)]
+    }
+    Xgb_class <- train(x = l1_train,y = factor(training[,classTarget]),
+                       method = "xgbTree",
+                       trControl = trControlClass,
+                       tuneGrid = tune_grid,
+                       nthread = nthread
+    )
+    
+    l2_train <- data.frame(l1_train,Xgb_class[["pred"]][order(Xgb_class$pred$rowIndex),levels(factor(training[,classTarget])) ])
+    
+    Xgb_latitude <- train(x = l2_train ,y = training[,"latitude"],
+                          method = "xgbTree",
+                          trControl = trControl,
+                          tuneGrid = tune_grid,
+                          nthread = nthread
+    )
+    
+    l3_train <- data.frame(l2_train, "latPred" = Xgb_latitude[["pred"]][order(Xgb_latitude$pred$rowIndex),"pred" ])
+    
+    Xgb_longitude <- train(x = l3_train ,y = training[,"longitude"],
+                           method = "xgbTree",
+                           trControl = trControl,
+                           tuneGrid = tune_grid ,
+                           nthread = nthread
+    )
+    
+  }
+  #check for test set, return trained model if no test set.
+  if(is.null(testing)){
+    
+    model <- function(test,variables){
+      regProbs <- predict(Xgb_region, newdata = test[,variables],type ="prob")
+      
+      l1_test <- data.frame(test[,variables], regProbs)
+      
+      classPred <- predict(Xgb_class, newdata = l1_test)
+      classProbs <- predict(Xgb_class, newdata = l1_test,type ="prob")
+      
+      l2_test <-  data.frame(l1_test, classProbs) 
+      latPred <- predict(Xgb_latitude, newdata = l2_test)
+      
+      l3_test <- data.frame(l2_test, latPred)
+      longPred <- predict(Xgb_longitude, newdata = l3_test)
+      return(list(classPred, latPred, longPred))
+      
+    }
+    return(list(Xgb_region,Xgb_class,Xgb_latitude,Xgb_longitude,"model" = model))
+  }else{
+    message("Generating predictions")
+    if(length(hierarchy) == 4){
+      regProbs <- predict(Xgb_region, newdata = testing[,variables],type ="prob")
+      
+      l1_test <- data.frame(testing[,variables], regProbs)
+    }else{
+      l1_test <- testing[,variables]
+    }
+    classPred <- predict(Xgb_class, newdata = l1_test)
+    classProbs <- predict(Xgb_class, newdata = l1_test,type ="prob")
+    
+    l2_test <-  data.frame(l1_test, classProbs) 
+    latPred <- predict(Xgb_latitude, newdata = l2_test)
+    
+    l3_test <- data.frame(l2_test, latPred)
+    longPred <- predict(Xgb_longitude, newdata = l3_test)
+    
+    #adjust out of bounds predictions
+    message('adjust out of bounds predictions')
+    longPred[longPred > 180] <- 180
+    longPred[longPred < -180] <- -180
+    latPred[latPred > 90] <- 90
+    latPred[latPred < -90] <- -90
+    #Pull to nearest coastline if provided
+    message('Pull to nearest coastline if provided')
+    find_coast <- function(long, lat) { # find the closet point on the coast for the given long and lat
+      distances_from_coastline <-
+        sp::spDistsN1(coast, c(long, lat), longlat = TRUE)
+      
+      closest_point <-  which.min(distances_from_coastline)
+      new_coords <- coast[closest_point,]
+      
+      return(new_coords)
+      
+    }
+    if (!is.null(coast)) {
+      message('toAdjust generated by function map.where')
+      # find the longPred / latPred that are not on world latitude/longitude
+      toAdjust <-
+        which(is.na(maps::map.where(database = "world", longPred, latPred)))
+      
+      # apply find_coast function to adjust the latitude and longitude of given toAdjust index 
+      message('adjusted generated by mapply find_coast and longPred, latPred')
+      adjusted <-
+        mapply(find_coast, long = longPred[toAdjust], lat = latPred[toAdjust])
+      
+      # update the adjusted lat and long
+      longPred[toAdjust] <- adjusted[1,]
+      latPred[toAdjust] <- adjusted[2,]
+      
+      
+    }
+    
+    
+    message('return')
+    return(list(classPred, latPred, longPred))
+    
+  }
+  
+}
+
+
 
 
 
@@ -929,6 +1123,204 @@ to navigate to the directory having split sample sets in the number of current s
                    
 ```
 * 2.4. Compare model training methods for the best split set
+  
+Model training using random forest with extra column and [mGPS](https://github.com/eelhaik/mGPS) (a modified gradient boosting model training method purposed in Elhaik's lab) will be performed here. GPS method is performed in [Elhaik's lab](https://www.nature.com/articles/ncomms4513), and will not show code here. Model training in random forest has been performed previously.
+  
+Note that *<best_num>* represents *the number from 100 runs for the best split set*
+
+```r
+    setwd(paste0('~/dt',<best_num>)) # <best_num> = the_best_set[,1]
+    
+    load('out_Q_values_ref_split300.rdata')
+    split300 <- qfile_nogp_popFilter
+    load('out_Q_training_baseline.rdata')
+    baseline <- qfile_nogp_popFilter
+    
+    # prepare coastline data for the adjustment of predicted geographic coordinate
+    coastlines <- cbind("x"  = maps::SpatialLines2map(rworldmap::coastsCoarse)$x ,"y" =maps::SpatialLines2map(rworldmap::coastsCoarse)$y)
+    coastlines <- coastlines[complete.cases(coastlines),]
+    coastlines <- coastlines[coastlines[,1] < 180 ,]
+    
+    set.seed(18)
+    
+    ##### model training by mGPS method #####
+    # split the set into 5 subsets.
+    trainFolds_split300 <-  caret::createFolds(split300$Populations, k = 5, returnTrain = T)
+    gp_split300 <- colnames(split300)[-c(1,2,12,13,14)]
+    GeoPreds_split300 <- list()
+    
+    trainFolds_baseline <-  caret::createFolds(baseline$Populations, k = 5, returnTrain = T)
+    gp_baseline <- colnames(split300)[-c(1,2,12,13,14)]
+    GeoPreds_baseline <- list()
+    
+    # For each iteration, use 4 subsets as training set, the left one as test set to do model training and prediction. Since there are 5 subsets, iteration is 5 so that all samples are finally tested
+    start_time <- Sys.time()
+    for (i in 1:5){
+      
+      train_split300 <- split300[trainFolds_split300[[i]],]
+      test_split300 <- split300[-trainFolds_split300[[i]],]
+      
+      message('mGPS model training is running...')
+      start_time.adm <- Sys.time()
+      testPreds_split300 <-mGPS(training = train_split300, testing = test_split300, 
+                                classTarget = "Populations",variables = gp_split300, 
+                                nthread = 8, 
+                                hierarchy = c('country', 'Populations', 'latitude', 'longitude'), 
+                                coast=coastlines)
+      GeoPreds_split300[[i]] <- testPreds_split300
+      
+      train_baseline <- baseline[trainFolds_baseline[[i]],]
+      test_baseline <- baseline[-trainFolds_baseline[[i]],]
+      
+      start_time.adm <- Sys.time()
+      testPreds_baseline <-mGPS(training = train_baseline, testing = test_baseline, 
+                                classTarget = "Populations",variables = gp_baseline, 
+                                nthread = 8, 
+                                hierarchy = c('country', 'Populations', 'latitude', 'longitude'), 
+                                coast=coastlines)
+      GeoPreds_baseline[[i]] <- testPreds_baseline
+      
+      message('random forest with extra column is running...')
+      
+      
+      
+      end_time.adm <- Sys.time()
+      time_for_testPreds <- end_time.adm - start_time.adm
+      print(time_for_testPreds)
+      
+      
+    }
+    end_time <- Sys.time()
+    time_for_testPreds_ind <- end_time - start_time
+    print(time_for_testPreds_ind) 
+    
+    #####Combine these test predictions into one data set #####
+    add_preds_split300 <- list()
+    add_preds_baseline <- list()
+    
+    for (i in 1:5){
+      
+      add_preds_split300[[i]] <- cbind(split300[-trainFolds_split300[[i]],] , 
+                                       "cityPred"= GeoPreds_split300[[i]][[1]], 
+                                       "latPred" = GeoPreds_split300[[i]][[2]], 
+                                       "longPred" = GeoPreds_split300[[i]][[3]] )
+      add_preds_baseline[[i]] <- cbind(baseline[-trainFolds_baseline[[i]],] , 
+                                       "cityPred"= GeoPreds_baseline[[i]][[1]], 
+                                       "latPred" = GeoPreds_baseline[[i]][[2]], 
+                                       "longPred" = GeoPreds_baseline[[i]][[3]] )
+      
+      
+      
+    }
+    
+    MetasubDataPreds <- plyr::rbind.fill(add_preds_split300)
+    write.csv(MetasubDataPreds,"qfile_predict_mGPS_split300.csv")
+    MetasubDataPreds <- plyr::rbind.fill(add_preds_baseline)
+    write.csv(MetasubDataPreds,"qfile_predict_mGPS_baseline.csv")
+    
+    
+    
+    
+    ##### model training by random forest with extra column method #####
+    tune_grid <- expand.grid(.mtry = (1:15))
+    
+    ### for AIMs selected from top300 feature scores in feature selection with null importance
+    # Find the extra column by the feature immportance from random forest training
+    training_split300 <- split300
+    training_split300$rowIndex <- as.numeric(rownames(training_split300))
+    variables_split300 <- colnames(split300)[-c(1,2,12,13,14)]
+    folds_split300 <- createFolds(training_split300[,'Populations'], k = 5, returnTrain = T)
+    trControl_split300 <-  trainControl( # regression
+      method = "cv",
+      number = 5,
+      verboseIter = FALSE,
+      returnData = FALSE,
+      search = "grid",
+      savePredictions = "final",
+      allowParallel = F,
+      index = folds_split300)
+    Xgb_latitude_split300 <- train(x = training_split300[,variables_split300],y = training_split300[,'latitude'],
+                                   method = "rf",
+                                   trControl = trControl_split300,
+                                   tuneGrid = tune_grid)
+    l2_train_split300 <- randomForest::randomForest(x = training_split300[,variables_split300],
+                                                    y = training_split300[,'longitude'],
+                                                    keep.forest=FALSE, importance=TRUE, mtry=c(6))
+    name_split300 <- rownames(l2_train_split300$importance)[order(as.data.frame(l2_train_split300$importance)[,1], decreasing = T)][1]
+    
+    # Visualize the feature importance
+    png('split300_feature_importance_plot.png', width = 8,height = 8, units = 'in', res = 600)
+    par(mar=c(15,4,2,1), las=2) 
+    varImpPlot(l2_train_split300)
+    dev.off()
+    
+    message(paste0('the added column will be: ',name_split300))
+    
+    # average of the selected column
+    the_mean_split300 <- mean(split300[,name_split300]) # 0.2093802
+    
+    # Add an extra column of the absolute difference between mean of Oceanian and each Oceanian portion
+    split300_extra <- split300
+    split300_extra$the_abs_diff <- abs(split300[,name_split300] - the_mean_split300)
+    
+    rf_model_training(split300_extra, tag = 'split300', extraColumn='the_abs_diff')
+    
+    
+    ### for baseline AIMs
+    # Find the extra column by the feature importance from random forest training
+    training_baseline <- baseline
+    training_baseline$rowIndex <- as.numeric(rownames(training_baseline))
+    variables_baseline <- colnames(baseline)[-c(1,2,12,13,14)]
+    folds_baseline <- createFolds(training_baseline[,'Populations'], k = 5, returnTrain = T)
+    trControl_baseline <-  trainControl( # regression
+      method = "cv",
+      number = 5,
+      verboseIter = FALSE,
+      returnData = FALSE,
+      search = "grid",
+      savePredictions = "final",
+      allowParallel = F,
+      index = folds_baseline)
+    Xgb_latitude_baseline <- train(x = training_baseline[,variables_baseline],y = training_baseline[,'latitude'],
+                                   method = "rf",
+                                   trControl = trControl_baseline,
+                                   tuneGrid = tune_grid)
+    l2_train_baseline <- randomForest::randomForest(x = training_baseline[,variables_baseline],
+                                                    y = training_baseline[,'longitude'],
+                                                    keep.forest=FALSE, importance=TRUE, mtry=c(6))
+    name_baseline <- rownames(l2_train_baseline$importance)[order(as.data.frame(l2_train_baseline$importance)[,1], decreasing = T)][1]
+    
+    # Visualize the feature importance
+    png('baseline_feature_importance_plot.png', width = 8,height = 8, units = 'in', res = 600)
+    par(mar=c(15,4,2,1), las=2) 
+    varImpPlot(l2_train_baseline)
+    dev.off()
+    
+    message(paste0('the added column will be: ',name_baseline))
+    
+    # average of the selected column
+    the_mean_baseline <- mean(baseline[,name_baseline]) # 0.2093802
+    
+    # Add an extra column of the absolute difference between mean of Oceanian and each Oceanian portion
+    baseline_extra <- baseline
+    baseline_extra$the_abs_diff <- abs(baseline[,name_baseline] - the_mean_baseline)
+    
+    rf_model_training(baseline_extra, tag = 'baseline', extraColumn='the_abs_diff')
+  
+```
+Use the predicted median distance from the origin as the value to evaluate the performance of 3 methods. The median distance from the origin is calculated by:
+```r
+  # read saved data frame from a model training method, and named as MetasubDataPreds
+  
+  # Calculate the distance between the original and the predicted geographic coordinates, added to column 'Distance_from_origin'
+  for (i in 1:nrow(MetasubDataPreds)){
+    MetasubDataPreds[i,"Distance_from_origin"] <- geosphere::distm(c(MetasubDataPreds[i,"longPred"],MetasubDataPreds[i,"latPred"]), c(MetasubDataPreds[i,"longitude"],MetasubDataPreds[i,"latitude"]), fun = geosphere::distHaversine)/1000
+  }
+  
+  # Print the median of distance from origin
+  print(median(MetasubDataPreds$Distance_from_origin ))
+
+```
 
   
   
