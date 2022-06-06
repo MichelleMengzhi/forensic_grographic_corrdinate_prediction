@@ -651,9 +651,500 @@ mGPS <-function(training = NULL,
 }
 
 
+barplot_admixture <- function(meta, pic_file_path){
+  # Generate a PDF file having bar plot showing admixture portion for all sample, grouped by country, ordered by continent
+  
+  # @meta: the data frame having population, admixture portion, latitude, longitude, country for all samples
+  # @pic_file_path: a string of pdf output file path
+  
+  genepools <- c('NorthEastAsian', 'Mediterranean', 'SouthAfrican',
+                 'SouthWestAsian', 'NativeAmerican', 'Oceanian',
+                 'SouthEastAsian', 'NorthernEuropean', 'SubsaharanAfrican')
+  
+  barNaming <- function(col){
+    retCol <- col
+    for(i in 2:length(col)){
+      if(stringr::str_trim(col[i-1]) == stringr::str_trim(col[i]) ){
+        retCol[i] <- ''
+      }
+      
+    }
+    return(retCol)
+  }
+  
+  # Convert lat and long to numeric
+  meta$latitude <- sapply(meta$latitude, as.numeric)
+  meta$longitude <- sapply(meta$longitude, as.numeric) 
+  
+  # Get the mean latitude and longitude for each country
+  ave_ctry <- data.frame(country=NA, latitude=NA, longitude=NA)
+  ctry_lst <- list()
+  for(i in unique(meta$country)){
+    ctry_lst[[i]] <- meta[which(meta$country == i),]
+    
+    ave_ctry <- rbind(ave_ctry, c(i, 
+                                  mean(ctry_lst[[i]]$latitude), 
+                                  mean(ctry_lst[[i]]$longitude)) )
+    
+  }
+  ave_ctry <- ave_ctry[-1,]
+  ave_ctry$latitude <- sapply(ave_ctry$latitude, as.numeric)
+  ave_ctry$longitude <- sapply(ave_ctry$longitude, as.numeric) 
+  str(ave_ctry)
+  
+  # Split countries to corresponding continent based on their mean lat and long
+  africa_med <- data.frame()
+  euro <- data.frame()
+  asia <- data.frame()
+  oceanian <- data.frame()
+  america <- data.frame()
+  for(j in 1:nrow(ave_ctry)){
+    if((-34.9 < ave_ctry$latitude[j] & ave_ctry$latitude[j] < 43.8) & 
+       (-28 < ave_ctry$longitude[j] & ave_ctry$longitude[j] < 58)){
+      africa_med <- rbind(africa_med, ave_ctry[j,])
+    }else if((36 < ave_ctry$latitude[j] & ave_ctry$latitude[j] < 72) & 
+             (-28 < ave_ctry$longitude[j] & ave_ctry$longitude[j] < 59)){
+      euro <- rbind(euro, ave_ctry[j,])
+    }else if((-10 < ave_ctry$latitude[j] & ave_ctry$latitude[j] < 78) & 
+             (59 < ave_ctry$longitude[j] & ave_ctry$longitude[j] < 180)){
+      asia <- rbind(asia, ave_ctry[j,])
+    }else if((-50 < ave_ctry$latitude[j] & ave_ctry$latitude[j] < -10) &
+             (110 < ave_ctry$longitude[j] & ave_ctry$longitude[j] < 180)){
+      oceanian <- rbind(oceanian, ave_ctry[j,])
+    }else{
+      america <- rbind(america, ave_ctry[j,])
+    }
+    
+  }
+  nrow(africa_med) + nrow(euro) + nrow(asia) + nrow(oceanian) + nrow(america) == length(unique(meta$country))
+  
+  # Sort countries based on:
+  # descending for abs. lat
+  # from left to right based on long
+  africa_med <- africa_med %>% arrange(latitude, desc(longitude) )
+  euro <- euro %>% arrange(latitude, desc(longitude))
+  asia <- asia %>% arrange(longitude, desc(latitude))
+  if(nrow(oceanian) != 0){
+    oceanian <-  oceanian %>% arrange(desc(latitude), longitude)
+  }
+  america <- america %>% arrange(longitude, desc(latitude))
+  
+  add_inds_to_dt <- function(ctry_lst, continent){
+    result_sub_dt <- data.frame()
+    for(i in continent$country){
+      result_sub_dt <- rbind(result_sub_dt, ctry_lst[[i]])
+    }
+    return(result_sub_dt)
+  }
+  tbl.ordered <- add_inds_to_dt(ctry_lst, africa_med)
+  tbl.ordered <- rbind(tbl.ordered, add_inds_to_dt(ctry_lst, euro))
+  tbl.ordered <- rbind(tbl.ordered, add_inds_to_dt(ctry_lst, asia))
+  tbl.ordered <- rbind(tbl.ordered, add_inds_to_dt(ctry_lst, oceanian))
+  tbl.ordered <- rbind(tbl.ordered, add_inds_to_dt(ctry_lst, america))
+  nrow(tbl.ordered) == nrow(meta)
+  
+  if(nrow(tbl.ordered) >= 10000){
+    # Add column for ind with country size < 20
+    popsize <- as.data.frame(table(tbl.ordered[,12]))
+    duplicate_line <- which(tbl.ordered$country %in% popsize$Var1[which(popsize$Freq < 20)])
+    dup <- 19
+    
+    
+  }else if(nrow(tbl.ordered) >= 1000){
+    # Add column for ind with country size < 20
+    popsize <- as.data.frame(table(tbl.ordered[,12]))
+    duplicate_line <- which(tbl.ordered$country %in% popsize$Var1[which(popsize$Freq < 5)])
+    # tbl.ordered_cp <- tbl.ordered
+    # tbl.ordered <- tbl.ordered_cp
+    dup <- 4
+    
+  }else{
+    duplicate_line <- NA
+  }
+  
+  if(length(duplicate_line)>1){
+    ct <- 0
+    
+    for(i in duplicate_line){
+      the_line <- as.data.frame(tbl.ordered[i+ct*dup,])
+      tmp <- rbind(the_line, the_line[rep(1, dup),])
+      half_up <-  tbl.ordered[c(1:(i+ct*dup-1)),]
+      half_down <- tbl.ordered[c((i+ct*dup+1):nrow(tbl.ordered)),]
+      if(i == 1){
+        tbl.ordered <- rbind(tmp, half_down)
+      }else if(i+ct*dup == nrow(tbl.ordered) ){
+        tbl.ordered <- rbind(half_up, tmp)
+        
+      }else{
+        tbl.ordered <- rbind(half_up, tmp, half_down)
+      }
+      ct <- ct+1
+    }
+    
+  }
+  
+  sector <- function (x0=0, y0=0, angle1, angle2, radius1, radius2, col, angleinc = 0.03){
+    if(isTRUE(angle1 > angle2)) {
+      temp <- angle1
+      angle1 <- angle2
+      angle2 <- temp
+    }
+    if (isTRUE(radius1 > radius2)) {
+      temp <- radius1
+      radius1 <- radius2
+      radius2 <- temp
+    }
+    
+    # Use 4 points polygon to draw a sector
+    angles <- seq(angle1, angle2, by = angleinc)
+    angles[length(angles)] <- angle2
+    angles <- angles*(pi/180)
+    xpos <- c(cos(angles) * radius1, cos(rev(angles)) * radius2) + x0
+    ypos <- c(sin(angles) * radius1, sin(rev(angles)) * radius2) + y0
+    polygon(xpos, ypos, col = col, border = col)
+  }
+  
+  colorPalette <- c('#984807', '#fcae91', '#632ea8',
+                    '#cb181d', '#ffff00', '#ff00ff',
+                    '#0000ff', '#00ff00', '#ff0000')
+  
+  # setting
+  rmin <- 6
+  rmax <- 1.85*rmin
+  amin <- -251
+  amax <- 91
+  prgap <- 0.2
+  col <- colorPalette
+  indcol <- 1
+  Kstart <- 3
+  Knum <- 9
+  pdf(pic_file_path, 45, 45)
+  par(xpd=T,  mar=c(2, 2, 2, 2)) 
+  plot(0, 0, xlim=c(-rmax, rmax), ylim=c(-rmax, rmax), axes=F, ann=F, type='n') # initialize the plot
+  rstart <- rmin
+  rlen <- (rmax-rmin)*(1-prgap) 
+  data <- tbl.ordered
+  angelperInd <- (amax - amin)/nrow(data) 
+  angpre <- amin
+  
+  for ( i in 1:nrow(data) ){   # iteration for each individual
+    ang1 <- angpre
+    ang2 <- ang1 + angelperInd
+    rpre <- rstart
+    for ( j in Kstart:(Knum+Kstart-1) ){   # iteration for each K
+      rpost <- rpre + rlen*data[i,j]
+      sector(angle1=ang1, angle2=ang2, radius1=rpre, radius2=rpost, col=col[j-Kstart+1])   ###### draw sector for each K of each individual
+      rpre <- rpost
+    }
+    angpre <- ang2
+  }
+  lend <- rmax - prgap*(rmax-rmin)
+  
+  #write all population name
+  target <- unique(tbl.ordered$country)
+  npop <- length(target)
+  
+  nameArgument <- barNaming(tbl.ordered$country)
+  angelperpop <- (amax - amin)/nrow(data)
+  angpre <- amin
+  for ( i in 1:nrow(tbl.ordered) ){
+    
+    ang <- angpre + angelperpop
+    xx <- lend*cos(ang*pi/180)
+    yy <- lend*sin(ang*pi/180)
+    text = nameArgument[i];
+    cex_no = 220/length(nameArgument)
+    if(cex_no>=0.1){cex_no=3}
+    if(cex_no<0.1){cex_no=2}
+    if ( ang < -90 ){text(xx, yy, text, srt=180+ang, adj=c(1.1, 0.5), cex=cex_no, font=1, col=colors()[490])}
+    else {text(xx, yy, text, srt=ang, adj=c(-0.1, 0.5), cex=cex_no, font=1, col=colors()[490])
+    }
+    angpre <- angpre + angelperpop
+  }
+  dev.off()
+  
+}
 
 
+distance_diff_plot_ctry <- function(MetasubDataPreds, png_path){
+  # Generate bar plot for predicted distance from the origin in levels: <100, 100-500, 500-1000, 1000-2000, 2000-3000, >3000, in the domain of country
+  
+  # @MetasubDataPreds: the data frame having population, admixture portion, geographic coordinate, predicted geographic coordinate, country, distance from the origin for all samples
+  # @png_path: a string of the plot path and name
+  
+  #Calculate distance from origin
+  population_names <- unique(MetasubDataPreds$country)
+  
+  bar_df1 <- data.frame(row.names = c(population_names, "Overall"))
 
+  # <100
+  for (i in 1: length(population_names)){
+    this_city <- population_names[i]
+    prop <- mean(MetasubDataPreds[MetasubDataPreds$country == this_city,][,"Distance_from_origin"] < 100)
+    bar_df1[rownames(bar_df1) == this_city,"0 - 100km"] <- prop
+    if(prop > 0){print(this_city)
+      print(prop)}
+  }
+  overall_prop <- mean(MetasubDataPreds[,"Distance_from_origin"] < 100)
+  bar_df1[ nrow(bar_df1),"0 - 100km"] <- overall_prop
+  
+  # >= 100 & < 500
+  for (i in 1: length(population_names)){
+    this_city <- population_names[i]
+    prop <- mean(MetasubDataPreds[MetasubDataPreds$country == this_city,][,"Distance_from_origin"] >= 100 & MetasubDataPreds[MetasubDataPreds$country == this_city,][,"Distance_from_origin"] < 500)
+    bar_df1[rownames(bar_df1) == this_city,"100 - 500km"] <- prop
+  }
+  overall_prop <-mean(MetasubDataPreds[,"Distance_from_origin"] >= 100 & MetasubDataPreds[,"Distance_from_origin"] < 500)
+  bar_df1[ nrow(bar_df1),"100 - 500km"] <- overall_prop
+  
+  # >= 500 & < 1000
+  for (i in 1: length(population_names)){
+    this_city <- population_names[i]
+    prop <- mean(MetasubDataPreds[MetasubDataPreds$country == this_city,][,"Distance_from_origin"] >= 500 & MetasubDataPreds[MetasubDataPreds$country == this_city,][,"Distance_from_origin"] < 1000)
+    bar_df1[rownames(bar_df1) == this_city,"500 - 1000km"] <- prop
+  }
+  overall_prop <- mean(MetasubDataPreds[,"Distance_from_origin"] >= 500 & MetasubDataPreds[,"Distance_from_origin"] < 1000)
+  bar_df1[ nrow(bar_df1),"500 - 1000km"] <- overall_prop
+  
+  # >= 1000 & < 2000
+  for (i in 1: length(population_names)){
+    this_city <- population_names[i]
+    prop <- mean(MetasubDataPreds[MetasubDataPreds$country == this_city,][,"Distance_from_origin"]>= 1000 & MetasubDataPreds[MetasubDataPreds$country == this_city,][,"Distance_from_origin"] < 2000)
+    bar_df1[rownames(bar_df1) == this_city,"1000 - 2000km"] <- prop
+  }
+  overall_prop <- mean(MetasubDataPreds[,"Distance_from_origin"] >= 1000 & MetasubDataPreds[,"Distance_from_origin"] < 2000)
+  bar_df1[ nrow(bar_df1),"1000 - 2000km"] <- overall_prop
+  
+  # >= 2000 & < 3000
+  for (i in 1: length(population_names)){
+    this_city <- population_names[i]
+    prop <- mean(MetasubDataPreds[MetasubDataPreds$country == this_city,][,"Distance_from_origin"] >= 2000 & MetasubDataPreds[MetasubDataPreds$country == this_city,][,"Distance_from_origin"] < 3000)
+    bar_df1[rownames(bar_df1) == this_city,"2000 - 3000km"] <- prop
+  }
+  overall_prop <- mean(MetasubDataPreds[,"Distance_from_origin"] >= 2000 & MetasubDataPreds[,"Distance_from_origin"] < 3000)
+  bar_df1[nrow(bar_df1),"2000 - 3000km"] <- overall_prop
+  
+  # >= 3000
+  for (i in 1: length(population_names)){
+    this_city <- population_names[i]
+    prop <- mean(MetasubDataPreds[MetasubDataPreds$country == this_city,][,"Distance_from_origin"] > 3000 )
+    bar_df1[rownames(bar_df1) == this_city,"> 3000km"] <- prop
+  }
+  overall_prop <- mean(MetasubDataPreds[,"Distance_from_origin"] > 3000)
+  bar_df1[ nrow(bar_df1),"> 3000km"] <- overall_prop
+  
+  bar_df1$country <- rownames(bar_df1)
+  
+
+  population_counts <- as.data.frame(table(MetasubDataPreds$country))
+  population_counts$Var1 <- as.character(population_counts$Var1)
+  population_counts <- rbind(population_counts, c('Overall', 0))
+  colnames(population_counts)[1] <- 'country'
+  bar_df1 <- merge(x = bar_df1, y = population_counts[ , c("country", "Freq")], by = "country", all.x=TRUE)
+  bar_df1 <- rbind(bar_df1[which(bar_df1$country == 'Overall'),], bar_df1[-which(bar_df1$country == 'Overall'),])
+
+  bar_df1$title <- NA
+  for(i in 2:nrow(bar_df1)){
+    bar_df1$title[i] <- paste0(bar_df1$country[i],'(',bar_df1$Freq[i],')' )
+  }
+
+  png(png_path, width = 20, height = 8, units = 'in', res = 600)
+  par(xpd = T, mar = par()$mar + c(10,1,0,2),  las=2, mgp = c(3,1,0))
+  
+  layout(mat = matrix(c(1, 2), 
+                      nrow = 1, 
+                      ncol = 2),
+         widths = c(1, 8))     # Widths of the two columns
+  
+  bp1 <- barplot(t(bar_df1[1,c(2:7)]*100), space = 0,col=c("lightyellow","slategray1","lightblue", "skyblue", "royalblue3", "darkblue"), 
+                names.arg=c("Overall",axes = FALSE) ,
+                cex.names=.6, ylab = "", axisnames = F, axes = F) 
+  axis(side =2, pos = 0)
+  mtext(text = c("Overall"), 
+  side = 1, at = bp1, line = 0, padj = 1, cex=0.7) 
+  title(ylab="Proportion of sample predictions %", mgp=c(3,1,0),cex.lab=1, cex = 0.7)
+  
+
+  bp2 <- barplot(t(bar_df1[-1,c(2:7)]*100), space = 0,col=c("lightyellow","slategray1","lightblue", "skyblue", "royalblue3", "darkblue"), 
+                names.arg=c(bar_df1$title[-1],
+                             axes = FALSE) ,
+                las =2, cex.names=.6, ylab = "", axisnames = F, axes = F) 
+  axis(side =2, pos = 0)
+  mtext(text = c(bar_df1$title[-1]), 
+        side = 1, at = bp2, line = 0, padj = 1, cex=0.7) 
+
+  legend("right",inset = c(-0.02,0), rev(c(colnames(bar_df1[,c(2:7)]))), 
+         fill = rev(c("lightyellow","slategray1","lightblue", "skyblue", "royalblue3", "darkblue")) ,
+         bty = 1, cex = 0.5)  
+  
+  
+
+  dev.off()
+  
+  }
+
+
+distance_map_visualization <- function(MetasubDataPreds, filter_level='all', png_path){
+  # In this function:
+  # 1. get the corresponding country and continent 
+  # 2. determine if the predicted geographic coordinate is in the same ocontinent of the original geographic corrdinate 
+  # 3. calculate the distance from the origin
+  # 4. extract samples based on the filter_level
+  # 5. calculate the portion of samples predicted to be in the same continent in continent domain, and assign the cooridnate to draw pie for each continent
+  # 6. map visualization with pie chart
+  
+  # @MetasubDataPreds: a data frame containing origin latitud and longitude, origin country, origin continent, and predicted latitude and longitude columns
+  # @filter_level: a string, 'all' or '500' or '1000'. 
+  #               Default is 'all'. 
+  #               'all' represents use all samples without filtration; 
+  #               'notSameContinent500' means to remain samples having distance from the origin > 500km, and not in the same continent; 
+  #               'notSameContinent1000' means to reamin samples having distance from the origin > 1000km, and not in the same continent；
+  #               'notSameContinent' means to reamin samples having distance from the origin > 1000km, and not in the same continent
+  # @png_path: a string of the path to store the visualization
+  
+  ##### 1. get the corresponding country and continent  #####
+  MetasubDataPreds$countryPred <- MazamaSpatialUtils::getCountry(MetasubDataPreds$longPred, MetasubDataPreds$latPred)
+  MetasubDataPreds$continentPred <- countrycode(sourcevar = MetasubDataPreds$countryPred,
+                                                origin = "country.name",
+                                                destination = "continent")
+  
+  # manually change the incorrect country assignment
+  for(i in 1:nrow(MetasubDataPreds)){
+    if((MetasubDataPreds$longPred[i]< -33 & MetasubDataPreds$longPred[i] > -76) &
+       (MetasubDataPreds$latPred[i]< 11 & MetasubDataPreds$latPred[i] > -56)){
+      MetasubDataPreds$continentPred[i] <- 'Americas'
+    }
+  }
+  
+  ##### 2. determine if the predicted geographic coordinate is in the same ocontinent of the original geographic corrdinate  #####
+  MetasubDataPreds$sameContinent <- NA
+  for(i in 1:nrow(MetasubDataPreds)){
+    if(MetasubDataPreds$continent[i] %in% MetasubDataPreds$continentPred[i]){
+      MetasubDataPreds$sameContinent[i] <- TRUE
+    }else{
+      MetasubDataPreds$sameContinent[i] <- FALSE
+    }
+  }
+  
+  
+  ##### 3. calculate the distance from the origin #####
+  for (i in 1:nrow(MetasubDataPreds)){
+    MetasubDataPreds[i,"distance_from_origin"] <- geosphere::distm(c(MetasubDataPreds[i,"longPred"],MetasubDataPreds[i,"latPred"]), 
+                                                                   c(MetasubDataPreds[i,"longitude"],MetasubDataPreds[i,"latitude"]), fun = geosphere::distHaversine)/1000
+  }
+  
+  
+  ##### 4. extract samples based on the filter_level#####
+  unique(MetasubDataPreds$continent)
+  if(filter_level == 'all'){
+    df <- MetasubDataPreds %>%
+      # filter(sameContinent == FALSE) %>%
+      # filter(distance_from_origin > 500) %>%
+      select(longitude,latitude,longPred, latPred,sameContinent, country)
+  }else if(filter_level == 'notSameContinent500'){
+    df <- MetasubDataPreds %>%
+      filter(sameContinent == FALSE) %>%
+      filter(distance_from_origin > 500) %>%
+      select(longitude,latitude,longPred, latPred,sameContinent, country)
+    
+  }else if(filter_level == 'notSameContinent1000'){
+    df <- MetasubDataPreds %>%
+      filter(sameContinent == FALSE) %>%
+      filter(distance_from_origin > 1000) %>%
+      select(longitude,latitude,longPred, latPred,sameContinent, country)
+    
+  }else if(filter_level == 'notSameContinent'){
+    df <- MetasubDataPreds %>%
+      filter(sameContinent == FALSE) %>%
+      select(longitude,latitude,longPred, latPred,sameContinent, country)
+    
+  }else{stop('Invalid filter_level input')}
+  
+  df$color <- NA
+  for(i in 1:nrow(df)){
+    if(df$sameContinent[i] == T){
+      df$color[i] <- "Same continent"
+    }else{
+      df$color[i] <- "Different continent"
+
+    }
+  }
+  # print(head(df))
+  
+  ##### 5. calculate the portion of samples predicted to be in the same continent in continent domain, and assign the cooridnate to draw pie for each continent #####
+  # print(pie_continent)
+  if(filter_level != 'all'){
+    pie_continent <- data.frame(continent=c(unique(MetasubDataPreds$continent), 'Overall'),
+                                latitude= NA, longitude = NA,
+                                in_continent = NA, not_in_continent = NA)
+    
+    for(i in c(unique(MetasubDataPreds$continent), 'Overall')){
+      if(i == 'Overall'){
+        pie_continent$in_continent[which(pie_continent$continent == 'Overall')] <- nrow(MetasubDataPreds[which(MetasubDataPreds$sameContinent == TRUE),])/nrow(MetasubDataPreds)*100
+        pie_continent$not_in_continent[which(pie_continent$continent == 'Overall')] <- 100-pie_continent$in_continent[which(pie_continent$continent == 'Overall')]
+        
+      }else{
+        the_sample <- MetasubDataPreds[which(MetasubDataPreds$continent == i),]
+        pie_continent$in_continent[which(pie_continent$continent == i)] <- nrow(the_sample[which(the_sample$sameContinent == TRUE),])/nrow(the_sample)*100
+        pie_continent$not_in_continent[which(pie_continent$continent == i)] <- 100-pie_continent$in_continent[which(pie_continent$continent == i)]
+        
+      }
+    }
+    pie_continent$latitude[which(pie_continent$continent == "Overall")] <- -62
+    pie_continent$longitude[which(pie_continent$continent == "Overall")] <- -155
+    
+  }else{
+    pie_continent <- data.frame(continent=unique(MetasubDataPreds$continent),
+                                latitude= NA, longitude = NA,
+                                in_continent = NA, not_in_continent = NA)
+    
+    for(i in unique(MetasubDataPreds$continent)){
+
+      the_sample <- MetasubDataPreds[which(MetasubDataPreds$continent == i),]
+      pie_continent$in_continent[which(pie_continent$continent == i)] <- nrow(the_sample[which(the_sample$sameContinent == TRUE),])/nrow(the_sample)*100
+      pie_continent$not_in_continent[which(pie_continent$continent == i)] <- 100-pie_continent$in_continent[which(pie_continent$continent == i)]
+      
+    }
+    
+  }
+  pie_continent$latitude[which(pie_continent$continent == "Africa")] <- -12
+  pie_continent$longitude[which(pie_continent$continent == "Africa")] <- -4
+  pie_continent$latitude[which(pie_continent$continent == "Europe")] <- 73
+  pie_continent$longitude[which(pie_continent$continent == "Europe")] <- 40
+  pie_continent$latitude[which(pie_continent$continent == "Asia")] <- 44
+  pie_continent$longitude[which(pie_continent$continent == "Asia")] <- 156
+  pie_continent$latitude[which(pie_continent$continent == "Oceania")] <- -21
+  pie_continent$longitude[which(pie_continent$continent == "Oceania")] <- 97
+  pie_continent$latitude[which(pie_continent$continent == "Americas")] <- 26
+  pie_continent$longitude[which(pie_continent$continent == "Americas")] <- -56
+  
+  colnames(pie_continent)[4:5] <- c("Same continent", "Different continent")
+  
+  print(pie_continent)
+  
+  ##### 6. map visualization with pie chart #####
+  cols <- c("Same continent"="steelblue1","Different continent"="violetred1",
+            "original geographic coordinate"="blue4", 'predicted geographic coordinate'="firebrick3")
+  
+  mapWorld <- borders("world", colour="gray50", fill="white")
+  p <- df %>% ggplot() + mapWorld+
+    geom_point(aes(x = longitude, y = latitude, color = "original geographic coordinate"))+
+    geom_point(aes(x = longPred, y = latPred, color = 'predicted geographic coordinate'))+
+    geom_segment(aes(x = longitude, y = latitude,
+                     xend = longPred, yend = latPred, group = sameContinent, color = color ),
+                 arrow = arrow(length = unit(0.2, 'cm')), size = 0.25, alpha = 0.5)+
+    geom_scatterpie(aes(x=longitude, y=latitude,  r = 6),
+                    data = pie_continent, cols = c("Same continent", "Different continent") )+
+    labs(x = "longitude",
+         y = "latitude")+
+    scale_colour_manual(name="Prediciton",values=cols, 
+                        guide = guide_legend(override.aes=aes(fill=NA))) + 
+    scale_fill_manual(name="Prediciton",values=cols, guide="none") +
+    theme(legend.position = "bottom") 
+
+  ggsave(p, file=paste0(png_path,'_',filter_level,'.png'), dpi = 600, width = 14, height=8)
+  
+}
 
 ```
 > 1. AADR set data preparation
@@ -2647,7 +3138,67 @@ sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tN
   ```
   
 > 4. Visualization
-                           
+  All codes for visualiation below can be applied to the data frame with predicted geographic coordinates added. Therefore, the codes below are sample code for each plot 
+  ```r
+    ##### ADMIXTURE Q file bar plot #####
+    # Load data frame either by load or by read.csv. 
+    # Note that ancestral population portion for each geographic coordinate, geographic coordinate, and country name must be contained
+    load('<data_frame_name>.rdata') 
+    
+    # Convert the data name to its AIM set name (baseline/bench/split300)
+    baseline <- <name of loaded data frame> # assume a baseline result is loaded
+    # Reorder the columns so that
+    # The order of columns for the bar plot:
+      # Populations, GRC, 
+      # North East Asian, Mediterranean, South African,
+      # South West Asian, Native American, Oceanian, 
+      # South East Asian, Northern European, Subsaharan African,
+      # country, latitude, longitude
+    baseline_nogp.order <- baseline[,c(1,2,5,3,8,10,4,7,9,6,11,12:14)]
+    
+    barplot_admixture(baseline_nogp.order, 
+                      pic_file_path = '<bar plot file path>.pdf')
+    
+    #####distance from the origin in level bar plot #####
+    # Load data frame either by load or by read.csv. 
+    # Note that ancestral population portion for each geographic coordinate, geographic coordinate, predicted geographic coordinate, and country name must be contained
+
+    load('<data_frame_name>.rdata') 
+    
+    # convert the name of loaded data frame
+    MetasubDataPreds <- <name of loaded data frame>
+    for (i in 1:nrow(MetasubDataPreds)){
+      MetasubDataPreds[i,"Distance_from_origin"] <- geosphere::distm(c(MetasubDataPreds[i,"longPred"],MetasubDataPreds[i,"latPred"]), c(MetasubDataPreds[i,"longitude"],MetasubDataPreds[i,"latitude"]), fun = geosphere::distHaversine)/1000
+    }
+    
+    png_path  <- paste0('<bar plot file path>.png')
+    distance_diff_plot_ctry(MetasubDataPreds, png_path) 
+    
+    #####map plot ####
+    # Load data frame either by load or by read.csv. 
+    # Note that ancestral population portion for each geographic coordinate, geographic coordinate, predicted geographic coordinate, and country name must be contained
+
+    load('<data_frame_name>.rdata') 
+    
+    # convert the name of loaded data frame
+    MetasubDataPreds <- <name of loaded data frame>
+    
+    # get continent name based on corresponding country  
+    MetasubDataPreds$continent <- countrycode::countrycode(sourcevar = MetasubDataPreds$country,
+                                                           origin = "country.name",
+                                                           destination = "continent")
+    
+    # Manually assign unknown continent
+    # If these 2 countries do not present in the data frame, just skip
+    MetasubDataPreds$continent[which(MetasubDataPreds$country=='Abkhazia')] <- 'Asia'
+    MetasubDataPreds$continent[which(MetasubDataPreds$country=='Czechoslovakia')] <- 'Europe'
+    
+    distance_map_visualization(MetasubDataPreds, filter_level='all', png_path = 'qfile_prediction/baseline_worldmap')
+    distance_map_visualization(MetasubDataPreds, filter_level='notSameContinent', png_path = 'qfile_prediction/baseline_worldmap')
+    distance_map_visualization(MetasubDataPreds, filter_level='notSameContinent1000', png_path = 'qfile_prediction/baseline_worldmap')
+    distance_map_visualization(MetasubDataPreds, filter_level='notSameContinent500', png_path = 'qfile_prediction/baseline_worldmap')
+
+  ```
  
   
                 
