@@ -1280,12 +1280,12 @@ to navigate to the directory having split sample sets in the number of current s
     # since the coding of base is different for AADR set and ancestral population set, convert the base in AADR set
     ~/bin/plink-1.07-x86_64/plink --bfile reference_reich --allele1234 --make-bed --out reference_reich_qc --noweb
 
-    # try to merge training set with ancestral population set, will get an error due to different allelic location in 2 sets, will automatically generate a .missno file
+    # try to merge training set with ancestral population set, will get an error due to different allelic location in 2 sets, will automatically generate a .missnp file
     plink --bfile reference_reich_qc --bmerge ../genepool_overlap.bed ../genepool_overlap.bim ../genepool_overlap.fam  --make-bed --out baseline_overlap --noweb --allow-no-sex
 
     # remove SNPs in different alleleic location
-    plink --bfile ../genepool_overlap --exclude genepool_overlap_missnp --make-bed --out genepool_overlap_qc
-    plink --bfile reference_reich_qc --exclude reference_reich_qc_missnp --make-bed --out reich_here_qc2
+    plink --bfile ../genepool_overlap --exclude baseline_overlap-merge.missnp  --make-bed --out genepool_overlap_qc
+    plink --bfile reference_reich_qc --exclude baseline_overlap-merge.missnp  --make-bed --out reich_here_qc2
     
     # merge genepool to AADR set
     plink --bfile reich_here_qc2 --bmerge genepool_overlap_qc.bed genepool_overlap_qc.bim genepool_overlap_qc.fam  --make-bed --out baseline_overlap --noweb --allow-no-sex
@@ -1584,7 +1584,7 @@ to navigate to the directory having split sample sets in the number of current s
       cat selected_fea_score.fam | cut -d ' ' -f1-2 > out_ind_id_selected_fea_score
       sed -i 's/ /\t/g' out_ind_id_selected_fea_score
       sed -i 's/ /\t/g' selected_fea_score.9.Q
-      paste out_ind_id_selected_fea_score selected_fea_score.9.Q > out_Q_values_ref_selected_fea_score_$2
+      paste out_ind_id_selected_fea_score selected_fea_score.9.Q > out_Q_values_ref_split300
       sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tNorthern European\tOceanian\tSouthern African\tSoutheast Asian\tSouthwest Asian\tSubsaharan African' out_Q_values_ref_split300
   ```
   
