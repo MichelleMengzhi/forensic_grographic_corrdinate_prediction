@@ -6,16 +6,9 @@
 
 This is the README file containing the workflow to construct this forensic geopragic cooridnate prediction pipeline.
 
-The required input are available in *Data* directory.
+Due to the size limitation of github, not all required input are available in *Data* directory.
 
-All required packages in R are listed in packages.R
-
-> Introduction. 
-
-  This is an admixture-based pipeline to predict smaples‘ geographic coordinates in given test set. The pipeline applies the following general workflow:  
-  * 1. Extract an AIM set from both training set and test set
-  * 2. Calculate portions of pupative ancestral populations of traing set and test set repsectively, by ADMIXTURE in supervised mode.
-  * 3. Predict the geographic coordinates for samples in test set based on the model trained by Random Forest using training set.   
+All required packages in R are listed in packages.R  
 
 > Load packages in R 4.1.2
 ``` r
@@ -1163,7 +1156,8 @@ distance_map_visualization <- function(MetasubDataPreds, filter_level='all', png
 
 ```
 > 1. AADR set data preparation
-  Codes here are perfomed in Bash command. [PLINK 1.9](https://www.cog-genomics.org/plink/1.9/) is required. Since some of file sizes here are over the size limit on github, only the result files with the prefix *reich_here_overlap* are provided in the main directory.
+  Codes here are perfomed in Bash command. [PLINK 1.9](https://www.cog-genomics.org/plink/1.9/) is required. 
+  
   ```console
   # Get overlaps between ancestrial population set and AADR set
   plink --bfile ../Genographic/num_Admixture_reference_pops --extract reich_here.bim --make-bed --out genepool_overlap_SNP --noweb
@@ -1174,7 +1168,6 @@ distance_map_visualization <- function(MetasubDataPreds, filter_level='all', png
   
 > 2. AIM set curation using AADR set 
 
-Note: Only the final result files (in 2..) is provided in *Data* directory
 
 * 2.1. Randomly split AADR samples into 2 based on a filtration criteria, do 100 times
 
