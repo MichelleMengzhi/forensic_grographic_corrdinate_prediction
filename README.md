@@ -1095,9 +1095,14 @@ distance_map_visualization <- function(MetasubDataPreds, filter_level='all', png
                                 in_continent = NA, not_in_continent = NA)
     
     for(i in c(unique(MetasubDataPreds$continent), 'Overall')){
-      if(i == 'Overall'){
-        pie_continent$in_continent[which(pie_continent$continent == 'Overall')] <- nrow(MetasubDataPreds[which(MetasubDataPreds$sameContinent == TRUE),])/nrow(MetasubDataPreds)*100
-        pie_continent$not_in_continent[which(pie_continent$continent == 'Overall')] <- 100-pie_continent$in_continent[which(pie_continent$continent == 'Overall')]
+      if(filter_level == 'all' ){
+          pie_continent$in_continent[which(pie_continent$continent == 'Overall')] <- nrow(df[which(df$sameContinent == TRUE),])/nrow(df)*100
+          pie_continent$not_in_continent[which(pie_continent$continent == 'Overall')] <- 100-pie_continent$in_continent[which(pie_continent$continent == 'Overall')]
+        }else{
+          pie_continent$in_continent[which(pie_continent$continent == 'Overall')] <- nrow(df)/nrow(MetasubDataPreds)*100
+          pie_continent$not_in_continent[which(pie_continent$continent == 'Overall')] <- 100-pie_continent$in_continent[which(pie_continent$continent == 'Overall')]
+        }
+
         
       }else{
         the_sample <- MetasubDataPreds[which(MetasubDataPreds$continent == i),]
