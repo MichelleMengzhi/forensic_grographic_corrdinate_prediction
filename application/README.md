@@ -1,8 +1,8 @@
-# Pipeline of biogepragphy prediction
+# Pipeline of biography prediction
 
 ## Introduction
 
-This is the workflow of pipeline to predict forensic geopragic cooridnate.
+This is the workflow of the pipeline to predict forensic georgic coordinate.
 
 There are 2 main steps:
 
@@ -13,17 +13,17 @@ There are 2 curated SNPs set in different sizes (saved in *SNPs_set*):
   * Benchmark SNPs set: 6,805 SNPs
   * Split300 SNPs set: 300 SNPs
 
-Thet can be used for different aplication purposes. Benchmark SNPs set has very similar prediction accuracy to >100,000 SNPs while its size is much larger than split300. 
+That can be used for different application purposes. Benchmark SNPs set has very similar prediction accuracy to >100,000 SNPs while its size is much larger than split300. 
 The accuracy of split300 is relatively smaller by comparing to Benchmark, but is small in size, which can be wider applied in forensic investigation.
 
   2. Admixture portions of individuals in the training set were trained with geographic coordinates (latitude and longitude) in Random Forest (RF) regression to predict the geographic coordinates of individuals in the test set. The predicted geographic coordinates were then refined if they could not fall within any country.
 
-If the test set (such as the example test set in *example_input*) contains origin geographic cooridnates, the distance between the original and predicted geographic coordinates can be calculated to check the performance of the pipeline.
+If the test set (such as the example test set in *example_input*) contains origin geographic coordinates, the distance between the original and predicted geographic coordinates can be calculated to check the performance of the pipeline.
 
 
 ## Usage 
 
-Follow the worklfow below with the example in *example_input* to go over how to use the pipeline and what the input for each function should be. 
+Follow the workflow below with the example in *example_input* to go over how to use the pipeline and what the input for each function should be. 
 All functions are separately saved in *function* directory with the function name as the R script name. The prediction output will be saved in *output* directory.
 Data will be used is in *application_data*
 
@@ -41,7 +41,7 @@ plink --bfile example_input/output_645 --extract application_data/test_overlap.b
 wc -l output/baseline_overlap.bim
 wc -l application_data/test_overlap.bim
 ```
-Note that if the overalpped SNPs in the given test set is much smaller than the number of SNPs in our training set (test_overlap), the prediction accuracy may be low. In forensic application, since the kit can mmake based on our SNPs set, the missing of SNPs will not happen.
+Note that if the size of overlapped SNPs in the given test set is much smaller than the number of SNPs in our training set (test_overlap), the prediction accuracy may be low. In forensic application, since the kit can make based on our SNPs set, the missing SNPs will not happen.
 
 #### Merge the reference populations to the given test set
 ```console
@@ -56,7 +56,7 @@ plink --bfile output/output_genepool --extract SNPs_set/split300.snp  --make-bed
 
 wc -l baseline_overlap_split300.bim
 ```
-Again, if the number of SNPs after extarcitng SNPs form split300 is not 300. The predcition accuracy cannot correctly show the power of our pipeline.
+Again, if the number of SNPs after extracting SNPs from split300 is not 300. The prediction accuracy cannot correctly show the power of our pipeline.
 
 #### Prepare population file for both the given test set and out training set
 ```console
@@ -92,30 +92,30 @@ sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tN
 
 
 
-# To sabe the disk memory, remove generated files that will no longer be used
+# To save the disk memory, remove generated files that will no longer be used
 rm application_data/test_overlap_split300.pop*
 rm application_data/test_overlap_split300.9.*
 rm output/baseline_overlap*
 rm output/baseline_overlap_split300*
 ```
 
-#### Execute the R script for model traing and predcition
+#### Execute the R script for model training and prediction
 The first argument after script name should be: *out_Q_<the_first_argument>_overlap_<the_third_argument>*
 
 The second argument after script name should be: *out_Q_<the_seconf_argument>_overlap_<the_third_argument>*
 
 The third argument after script name should be the SNPs set: either 'split300' or 'benchmark'
 
-Note that if the user would to use benchmark SNPs set, all 'split300' in all files generated above should be replaced to  
+Note that if the user would use benchmark SNPs set, all 'split300' in all files generated above should be replaced to  
 ```console 
 Rscript --vanilla function/run_rf_output.R test baseline split300
 
 ```
 The output from the script in the format as *<the_second_argument>_<the_third_argument>_qfile.rdata* and *<the_second_argument>_<the_third_argument>_predicted_latlong.csv*
 
-Predicted geographic cooridinates for all individuals in the given test set was stored in the csv file
+Predicted geographic coordinates for all individuals in the given test set were stored in the csv file
 
-The rdata file can be further analysed if needed, but since in gorensic investigation, the given test set will almost never have the real geographic cooridnates, csv file will be output file the user always use.
+The rdata file can be further analyzed if needed, but since in forensic investigation, the given test set will almost never have the real geographic coordinates, csv file will be the output file the user always uses.
 
 
 
