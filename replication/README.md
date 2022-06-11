@@ -2456,7 +2456,7 @@ Use the predicted median distance from the origin as the value to evaluate the p
 
       cut -f1-2 -d ' ' test_overlap.fam > test_overlap.pop.txt
 
-      printf '%.0s\n' {1..1621} > test_overlap.pop
+      printf '%.0s\n' {1..3550} > test_overlap.pop
 
       cat test_overlap.pop.txt | grep -E 'NorthEastAsian|Mediterranean|SouthAfrican|SouthWestAsian|NativeAmerican|Oceanian|SouthEastAsian|NorthernEuropean|SubsaharanAfrican' | cut -f1 -d' ' >> test_overlap.pop
 
@@ -2471,7 +2471,7 @@ Use the predicted median distance from the origin as the value to evaluate the p
 
       cut -f1-2 -d ' ' baseline_overlap.fam > baseline_overlap.pop.txt
 
-    sed 's/.*GRC.*/ /g' baseline_overlap.pop.txt | sed 's/[0-9]//g' | cut -f1 -d' ' > baseline_overlap.pop
+      sed 's/.*GRC.*/ /g' baseline_overlap.pop.txt | sed 's/[0-9]//g' | cut -f1 -d' ' > baseline_overlap.pop
 
 
       ~/admixture32 baseline_overlap.bed -F 9 -j8
@@ -2513,12 +2513,12 @@ Use the predicted median distance from the origin as the value to evaluate the p
       sed -i 's/ /\t/g' baseline_overlap_bench_out_ind_id
       sed -i 's/ /\t/g' baseline_overlap_bench.9.Q
       paste baseline_overlap_bench_out_ind_id baseline_overlap_bench.9.Q > out_Q_baseline_overlap_bench
-sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tNorthern European\tOceanian\tSouthern African\tSoutheast Asian\tSouthwest Asian\tSubsaharan African'  out_Q_baseline_overlap_bench
+      sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tNorthern European\tOceanian\tSouthern African\tSoutheast Asian\tSouthwest Asian\tSubsaharan African'  out_Q_baseline_overlap_bench
 
 
       # split300 admixture for test_training (training set)
 
-      plink --bfile test_overlap --extract sample_feature/socres_df.split.top300_test.snp  --make-bed --out test_overlap_split300
+      plink --bfile test_overlap --extract sample_feature/split300_test.snp  --make-bed --out test_overlap_split300
 
       cut -f1-2 -d ' ' test_overlap_split300.fam > test_overlap_split300.pop.txt
 
@@ -2535,7 +2535,7 @@ sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tN
 
       # split300 admixture for baseline_overlap (test set)
 
-      plink --bfile baseline_overlap --extract sample_feature/socres_df.split.top300_test.snp  --make-bed --out baseline_overlap_split300
+      plink --bfile baseline_overlap --extract sample_feature/split300_test.snp  --make-bed --out baseline_overlap_split300
 
       cut -f1-2 -d ' ' baseline_overlap_split300.fam > baseline_overlap_split300.pop.txt
 
@@ -2808,7 +2808,7 @@ sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tN
       
       # for split300
       system(paste0('plink --bfile inter_file/',test_name,
-                    '_training_baseline_overlap --extract sample_feature/socres_df.split.top300.snp  --make-bed --out inter_file/',test_name,'_training_selected_split300 --noweb'))
+                    '_training_baseline_overlap --extract sample_feature/split300.snp  --make-bed --out inter_file/',test_name,'_training_selected_split300 --noweb'))
       system(paste0("cut -f1-2 -d ' ' inter_file/",test_name,"_training_selected_split300.fam > inter_file/",test_name,"_training_selected_split300.pop.txt"))
       system(paste0("printf '%.0s\n' {1..",nrow(the_training_samples_meta),"}  > inter_file/",test_name,"_training_selected_split300.pop"))
       
@@ -2836,7 +2836,7 @@ sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tN
       
       # for split300
       system(paste0('plink --bfile inter_file/',test_name,
-                    '_test_baseline_overlap --extract sample_feature/socres_df.split.top300.snp  --make-bed --out inter_file/',test_name,'_test_selected_split300 --noweb'))
+                    '_test_baseline_overlap --extract sample_feature/split300.snp  --make-bed --out inter_file/',test_name,'_test_selected_split300 --noweb'))
       system(paste0("cut -f1-2 -d ' ' inter_file/",test_name,"_test_selected_split300.fam > inter_file/",test_name,"_test_selected_split300.pop.txt"))
       system(paste0("printf '%.0s\n' {1}  > inter_file/",test_name,"_test_selected_split300.pop"))
       
@@ -2886,7 +2886,7 @@ sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tN
       
       # for split300
       system(paste0('plink --bfile inter_file/',test_name,
-                    '_training_baseline_overlap --extract sample_feature/socres_df.split.top300_test.snp  --make-bed --out inter_file/',test_name,'_training_selected_split300 --noweb'))
+                    '_training_baseline_overlap --extract sample_feature/split300_test.snp  --make-bed --out inter_file/',test_name,'_training_selected_split300 --noweb'))
       system(paste0("cut -f1-2 -d ' ' inter_file/",test_name,"_training_selected_split300.fam > inter_file/",test_name,"_training_selected_split300.pop.txt"))
       system(paste0("printf '%.0s\n' {1..",nrow(the_training_samples_meta),"}  > inter_file/",test_name,"_training_selected_split300.pop"))
       
@@ -2912,7 +2912,7 @@ sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tN
       
       # for split300
       system(paste0('plink --bfile inter_file/',test_name,
-                    '_test_baseline_overlap --extract sample_feature/socres_df.split.top300_test.snp  --make-bed --out inter_file/',test_name,'_test_selected_split300 --noweb'))
+                    '_test_baseline_overlap --extract sample_feature/split300_test.snp  --make-bed --out inter_file/',test_name,'_test_selected_split300 --noweb'))
       system(paste0("cut -f1-2 -d ' ' inter_file/",test_name,"_test_selected_split300.fam > inter_file/",test_name,"_test_selected_split300.pop.txt"))
       system(paste0("printf '%.0s\n' {1}  > inter_file/",test_name,"_test_selected_split300.pop"))
       
