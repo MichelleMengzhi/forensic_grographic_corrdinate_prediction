@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This is the workflow of the pipeline to predict forensic georgic coordinate.
+This is the workflow of the pipeline to predict forensic georgic coordinates.
 
 There are 2 main steps:
 
