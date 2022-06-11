@@ -2427,10 +2427,10 @@ Use the predicted median distance from the origin as the value to evaluate the p
   
   * 2.7. Confirm the performance of curated AIM sets using a new test set (output_645)
   
-  Since we have 2 sets from the best split set, the new test set will be tested based on each model.
+  Since we have SNPs sets for 2 subsets from the best split set, the new test set will be tested based on each SNPs set.
   
   ```console
-     #  use test to train output_645
+     #  use test set SNPs set to train output_645
 
       # get overlapped SNPs between output_645 and gene pool set
       plink --bfile ../../Genographic/output_645 --extract ../../Genographic/num_Admixture_reference_pops.bim --make-bed --out output_overlap 
@@ -2446,16 +2446,10 @@ Use the predicted median distance from the origin as the value to evaluate the p
 
 
       # extract test set from AADR set as training set for output_645
-      plink --bfile ../reich_here_overlap_qc2 --keep sample_feature/test_sample --make-bed --out test_training
-
-      # merge test_training to gene pool set
-      plink --bfile test_training --bmerge ../genepool_overlap_qc.bed ../genepool_overlap_qc.bim ../genepool_overlap_qc.fam --make-bed --out test_genepool --allow-no-sex
+      plink --bfile ../reich_here_overlap_qc2 --bmerge ../genepool_overlap_qc.bed ../genepool_overlap_qc.bim ../genepool_overlap_qc.fam --make-bed --out test_genepool --allow-no-sex
 
       # get the overlap SNPs for both output645 and AADR set for training set
       plink --bfile test_genepool --extract baseline_overlap.bim --make-bed --out test_overlap
-
-
-
 
 
       # baseline admixture for test_training (training set)
@@ -2488,13 +2482,13 @@ Use the predicted median distance from the origin as the value to evaluate the p
       sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tNorthern European\tOceanian\tSouthern African\tSoutheast Asian\tSouthwest Asian\tSubsaharan African'  out_Q_baseline_overlap_baseline
 
 
-      # benchmark admixture for test_training (training set)
+      # benchmark in training set
 
       plink --bfile test_overlap --extract sample_feature/benchmark_test.snp  --make-bed --out test_overlap_bench
 
       cut -f1-2 -d ' ' test_overlap_bench.fam > test_overlap_bench.pop.txt
 
-      printf '%.0s\n' {1..1621} > test_overlap_bench.pop
+      printf '%.0s\n' {1..3550} > test_overlap_bench.pop
 
       cat test_overlap_bench.pop.txt | grep -E 'NorthEastAsian|Mediterranean|SouthAfrican|SouthWestAsian|NativeAmerican|Oceanian|SouthEastAsian|NorthernEuropean|SubsaharanAfrican' | cut -f1 -d' ' >> test_overlap_bench.pop
 
@@ -2528,7 +2522,7 @@ sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tN
 
       cut -f1-2 -d ' ' test_overlap_split300.fam > test_overlap_split300.pop.txt
 
-      printf '%.0s\n' {1..1621} > test_overlap_split300.pop
+      printf '%.0s\n' {1..3550} > test_overlap_split300.pop
 
       cat test_overlap_split300.pop.txt | grep -E 'NorthEastAsian|Mediterranean|SouthAfrican|SouthWestAsian|NativeAmerican|Oceanian|SouthEastAsian|NorthernEuropean|SubsaharanAfrican' | cut -f1 -d' ' >> test_overlap_split300.pop
 
@@ -2566,10 +2560,7 @@ sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tN
       #  use train to train output_645
 
       # extract test set from AADR set as training set for output_645
-      plink --bfile ../reich_here_overlap_qc2 --keep sample_feature/reference_sample --make-bed --out train_training
-
-      # merge train_training to gene pool set
-      plink --bfile train_training --bmerge ../genepool_overlap_qc.bed ../genepool_overlap_qc.bim ../genepool_overlap_qc.fam --make-bed --out train_genepool --allow-no-sex
+      plink --bfile ../reich_here_overlap_qc2  --bmerge ../genepool_overlap_qc.bed ../genepool_overlap_qc.bim ../genepool_overlap_qc.fam --make-bed --out train_genepool --allow-no-sex
 
       # get the overlap SNPs for both output645 and AADR set for training set
       plink --bfile train_genepool --extract baseline_overlap.bim --make-bed --out train_overlap
@@ -2579,7 +2570,7 @@ sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tN
 
       cut -f1-2 -d ' ' train_overlap.fam > train_overlap.pop.txt
 
-      printf '%.0s\n' {1..1756} > train_overlap.pop
+      printf '%.0s\n' {1..3550} > train_overlap.pop
 
       cat train_overlap.pop.txt | grep -E 'NorthEastAsian|Mediterranean|SouthAfrican|SouthWestAsian|NativeAmerican|Oceanian|SouthEastAsian|NorthernEuropean|SubsaharanAfrican' | cut -f1 -d' ' >> train_overlap.pop
 
@@ -2601,7 +2592,7 @@ sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tN
 
       cut -f1-2 -d ' ' train_overlap_bench.fam > train_overlap_bench.pop.txt
 
-      printf '%.0s\n' {1..1756} > train_overlap_bench.pop
+      printf '%.0s\n' {1..3550} > train_overlap_bench.pop
 
       cat train_overlap_bench.pop.txt | grep -E 'NorthEastAsian|Mediterranean|SouthAfrican|SouthWestAsian|NativeAmerican|Oceanian|SouthEastAsian|NorthernEuropean|SubsaharanAfrican' | cut -f1 -d' ' >> train_overlap_bench.pop
 
@@ -2631,11 +2622,11 @@ sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tN
 
       # split300 admixture for train_overlap (training set)
 
-      plink --bfile train_overlap --extract sample_feature/socres_df.split.top300.snp  --make-bed --out train_overlap_split300
+      plink --bfile train_overlap --extract sample_feature/split300.snp  --make-bed --out train_overlap_split300
 
       cut -f1-2 -d ' ' train_overlap_split300.fam > train_overlap_split300.pop.txt
 
-      printf '%.0s\n' {1..1756} > train_overlap_split300.pop
+      printf '%.0s\n' {1..3550} > train_overlap_split300.pop
 
       cat train_overlap_split300.pop.txt | grep -E 'NorthEastAsian|Mediterranean|SouthAfrican|SouthWestAsian|NativeAmerican|Oceanian|SouthEastAsian|NorthernEuropean|SubsaharanAfrican' | cut -f1 -d' ' >> train_overlap_split300.pop
 
@@ -2648,7 +2639,7 @@ sed -i '1 i\Populations\tGRC\tMediterranean\tNative American\tNortheast Asian\tN
 
       # split300 admixture for baseline_overlap (test set)
 
-      plink --bfile baseline_overlap --extract sample_feature/socres_df.split.top300.snp  --make-bed --out baseline_test_overlap_split300
+      plink --bfile baseline_overlap --extract sample_feature/split300.snp  --make-bed --out baseline_test_overlap_split300
 
       cut -f1-2 -d ' ' baseline_test_overlap_split300.fam > baseline_test_overlap_split300.pop.txt
 
