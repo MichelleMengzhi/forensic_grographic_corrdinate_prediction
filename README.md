@@ -10,7 +10,7 @@ There are 2 main direcotries in this repository:
 
 * How to apply the pipeline constructed in this project can be found *application/README.md*.
 
-Directoery *Data* contains: 
+Directory *Data* contains: 
 
    * annotation file for AADR set: meta_table
    
