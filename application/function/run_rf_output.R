@@ -30,8 +30,6 @@ qfile_test_nogp <- qfile_test[-which(qfile_test$Population %in% c('NorthEastAsia
                                                                   'SouthEastAsian', 'NorthernEuropean',
                                                                   'SubsaharanAfrican')), ]
 qfile_test_nogp$Populations<- as.character(qfile_test_nogp$Populations)
-# meta <- openxlsx::read.xlsx('population_metasub.xlsx')
-# qfile_test_nogp_popFilter <- add_meta_ref(qfile_test_nogp, meta)
 qfile_test_nogp_popFilter <- droplevels(qfile_test_nogp)
 print('qfile_test_nogp_popFilter:')
 str(qfile_test_nogp_popFilter)
@@ -40,9 +38,6 @@ if(sum(is.na(qfile_train_nogp_popFilter$longitude)) > 0){
   qfile_train_nogp_popFilter <- qfile_train_nogp_popFilter[-which(is.na(qfile_train_nogp_popFilter$longitude)),]
 }
 qfile_test_nogp_popFilter$GRC <- as.character(qfile_test_nogp_popFilter$GRC)
-if(sum(is.na(qfile_test_nogp_popFilter$longitude)) > 0){
-  qfile_test_nogp_popFilter <- qfile_test_nogp_popFilter[-which(is.na(qfile_test_nogp_popFilter$longitude)),]
-}
 
 ### Model training ###
 source('function/rf_model_training_train_test.R')
