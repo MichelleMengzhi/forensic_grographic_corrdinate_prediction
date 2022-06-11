@@ -12,13 +12,13 @@ There are 2 main direcotries in this repository:
 
 Directoery *Data* contains: 
 
-   annotation file for AADR set: meta_table
+   * annotation file for AADR set: meta_table
    
-   annotation file for Genographic set (output_645): population_metasub.xlsx
+   * annotation file for Genographic set (output_645): population_metasub.xlsx
    
-   Version ID of subset1 individuals from the best split set in the report: reference_sample
+   * Version ID of subset1 individuals from the best split set in the report: reference_sample
    
-   Version ID of subset2 individuals from the best split set in the report: test_sample
+   * Version ID of subset2 individuals from the best split set in the report: test_sample
   
                 
 
